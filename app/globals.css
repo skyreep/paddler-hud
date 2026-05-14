@@ -1,0 +1,255 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f1f5f8;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #f8fafc;
+  --border: #d8e1e8;
+  --border-soft: #e8eef3;
+  --text: #0b1d2a;
+  --text-muted: #5b6b73;
+  --text-faint: #8a9aa3;
+  --accent: #0f6ea8;
+  --accent-2: #1d8fc9;
+  --accent-soft: #d4e9f5;
+  --good: #198754;
+  --good-soft: #d6efe1;
+  --warn: #c47b00;
+  --warn-soft: #fbeccd;
+  --bad: #c1352b;
+  --bad-soft: #fbdcd9;
+  --info: #1d6fb3;
+  --shadow: 0 1px 2px rgba(15, 30, 45, .05), 0 4px 12px rgba(15, 30, 45, .06);
+}
+html[data-theme="dark"] {
+  --bg: #07111a;
+  --bg-elev: #0f1f2c;
+  --bg-elev-2: #142a3a;
+  --border: #1f3b50;
+  --border-soft: #173041;
+  --text: #e8f1f7;
+  --text-muted: #9bb1bd;
+  --text-faint: #6b8392;
+  --accent: #5cb8e8;
+  --accent-2: #87cfee;
+  --accent-soft: #142e44;
+  --good: #4cc38a;
+  --good-soft: #133526;
+  --warn: #f0b35a;
+  --warn-soft: #3a2b10;
+  --bad: #ff7a6f;
+  --bad-soft: #3b1815;
+  --info: #6bb6e8;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  transition: background-color .25s ease, color .25s ease;
+}
+
+.num, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+.tile {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  /* Defensive: prevent tile content from forcing the grid cell wider than
+     the column. Without min-width:0, intrinsic min-content of children
+     (e.g. long station names, mono rows) can blow out the row at narrow widths. */
+  min-width: 0;
+  max-width: 100%;
+}
+.tile * { min-width: 0; }
+
+/* HUD responsive grid:
+   - default (mobile): one full-width column
+   - >= 900px tablet: two columns
+   - >= 1280px desktop: three columns
+   Every tile defends its cell width so children can't push it wider. */
+.hud-grid > .tile { min-width: 0; }
+@media (min-width: 900px) {
+  .hud-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1280px) {
+  .hud-grid { grid-template-columns: 1fr 1fr 1fr; }
+}
+.tile-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.tile-title {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--text-muted);
+}
+.tile-meta {
+  margin-left: auto;
+  font-size: 11px; color: var(--text-faint);
+}
+.pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .3px; text-transform: uppercase;
+}
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad  { background: var(--bad-soft);  color: var(--bad); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+
+/* Theme icon swap — both icons exist in DOM, CSS shows the correct one.
+   Default to dark-mode visual (moon shown) until pre-paint script sets data-theme. */
+.theme-sun { display: none; }
+.theme-moon { display: block; }
+html[data-theme="dark"] .theme-sun { display: block; }
+html[data-theme="dark"] .theme-moon { display: none; }
+
+/* Refresh icon spin keyframe (used inline-styled in TopBar) */
+@keyframes phud-spin { to { transform: rotate(360deg); } }
+
+/* Themed scrollbars — both axes, both themes. Replaces the harsh white
+   default chrome that's especially abrasive in dark mode. */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track {
+  background: var(--bg-elev-2);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--bg-elev-2);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+*::-webkit-scrollbar-corner { background: var(--bg-elev-2); }
+* { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg-elev-2); }
+
+/* --- Map tile controls --- */
+.phud-map-ctrl {
+  position: absolute;
+  top: 10px; right: 10px;
+  display: flex; gap: 6px;
+  z-index: 500;
+}
+.phud-map-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 10px;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font: 600 12px/1 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+.phud-map-btn:hover { background: var(--accent-soft); }
+.phud-map-btn.on   { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* Leaflet defaults look out of place; nudge them to match app aesthetic. */
+.leaflet-control-zoom a {
+  background: var(--bg-elev) !important;
+  color: var(--text) !important;
+  border-color: var(--border-soft) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--accent-soft) !important; }
+.leaflet-control-attribution {
+  background: rgba(255,255,255,.85) !important;
+  color: #333 !important;
+  font-size: 10px !important;
+}
+html[data-theme="dark"] .leaflet-control-attribution {
+  background: rgba(15,31,44,.85) !important;
+  color: var(--text-muted) !important;
+}
+.leaflet-popup-content-wrapper {
+  background: var(--bg-elev) !important;
+  color: var(--text) !important;
+  border-radius: 10px !important;
+}
+.leaflet-popup-tip { background: var(--bg-elev) !important; }
+
+/* Cap Leaflet's internal z-indices so the topbar + modals always sit above
+   any map tile, control, or overlay. Leaflet uses 200..650 internally; the
+   topbar uses 50 and modals use 100. We force everything inside .leaflet-pane
+   and the map control containers BELOW the topbar/modals. */
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom { z-index: 1 !important; }
+.leaflet-control-container .leaflet-control { z-index: 2 !important; }
+
+/* --- Radar tile controls --- */
+.phud-radar-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px;
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.phud-radar-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.phud-radar-btn.primary {
+  background: var(--accent); color: white; border-color: var(--accent);
+}
+.phud-radar-btn.primary:hover { background: var(--accent-2); }
+
+/* Slider thumb styling — WebKit + Firefox + Edge */
+.phud-radar-slider {
+  -webkit-appearance: none;
+  width: 100%; height: 22px;
+  background: transparent; padding: 0; margin: 0;
+  cursor: pointer;
+}
+.phud-radar-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--border) 0%,
+    var(--border) calc(var(--phud-nowcast-pct, 80%)),
+    var(--accent-2) calc(var(--phud-nowcast-pct, 80%)),
+    var(--accent-2) 100%
+  );
+  border: 1px solid var(--border-soft);
+}
+.phud-radar-slider::-moz-range-track {
+  height: 6px; border-radius: 999px;
+  background: var(--border);
+  border: 1px solid var(--border-soft);
+}
+.phud-radar-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-elev);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(0,0,0,.25);
+  margin-top: -7px;
+  cursor: grab;
+}
+.phud-radar-slider:active::-webkit-slider-thumb { cursor: grabbing; }
+.phud-radar-slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-elev);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(0,0,0,.25);
+  cursor: grab;
+}
+.phud-radar-slider:focus-visible::-webkit-slider-thumb,
+.phud-radar-slider:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
