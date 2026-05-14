@@ -128,7 +128,9 @@ export default function TopBar({ locationName, stationKey }: Props) {
           </svg>
         </button>
 
-        <button style={avatarBtn} aria-label="Account">SR</button>
+        {/* Account avatar — hidden until user profiles ship. To restore:
+              <button style={avatarBtn} aria-label="Account">SR</button>
+            and re-enable the avatarBtn style block below. */}
       </header>
 
       <LocationPicker open={locOpen} onClose={() => setLocOpen(false)} activeKey={stationKey} />
@@ -153,12 +155,14 @@ const iconBtn: React.CSSProperties = {
   color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
   cursor: "pointer",
 };
+// Avatar style kept around for when user profiles ship — see commented JSX above.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const avatarBtn: React.CSSProperties = {
   width: 36, height: 36, borderRadius: "50%",
   background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
   color: "white", border: "none", fontWeight: 700, fontSize: 14,
   display: "grid", placeItems: "center", cursor: "pointer",
-  flexShrink: 0,           // ← keep circle round on tight phone widths
-  aspectRatio: "1",        // ← double-defense
+  flexShrink: 0,
+  aspectRatio: "1",
   padding: 0,
 };

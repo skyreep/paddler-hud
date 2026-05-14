@@ -4,10 +4,24 @@ import type { Metadata, Viewport } from "next";
 export const metadata: Metadata = {
   title: "Paddler HUD",
   description: "Mobile-first marine dashboard for paddlers of the Lowcountry.",
+  applicationName: "Paddler HUD",
+  // When added to an iOS home screen, the app launches in standalone mode
+  // (no Safari chrome) with a translucent status bar over the topbar.
+  appleWebApp: {
+    capable: true,
+    title: "Paddler HUD",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,   // don't autolink phone-number-shaped strings
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a1b26",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f1f5f8" },
+    { media: "(prefers-color-scheme: dark)",  color: "#0a1b26" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
