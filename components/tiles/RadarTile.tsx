@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { STATION_TZ } from "@/lib/time";
 
 interface Props {
   lat: number;
@@ -38,7 +39,9 @@ function formatOffset(deltaSec: number): string {
 }
 
 function formatClock(t: number): string {
-  return new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return new Date(t * 1000).toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", timeZone: STATION_TZ,
+  });
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { WeatherHour, NwsAttribution } from "@/lib/types";
+import { STATION_TZ } from "@/lib/time";
 
 function iconFor(forecast: string) {
   const f = forecast.toLowerCase();
@@ -73,7 +74,7 @@ export default function HourlyTile({ hours, attribution }: {
               borderRadius: 12, fontSize: 12,
             }}>
               <div style={{ color: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}>
-                {i === 0 ? "Now" : new Date(h.time).toLocaleTimeString([], { hour: "numeric" })}
+                {i === 0 ? "Now" : new Date(h.time).toLocaleTimeString("en-US", { hour: "numeric", timeZone: STATION_TZ })}
               </div>
               <div style={{ fontSize: 22, margin: "4px 0" }}>{iconFor(h.shortForecast)}</div>
               <div className="num" style={{ fontWeight: 700, fontSize: 14 }}>

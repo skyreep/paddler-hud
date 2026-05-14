@@ -1,4 +1,5 @@
 import type { WeatherNow, AirQualityResponse, NwsAttribution } from "@/lib/types";
+import { fmtTime } from "@/lib/time";
 
 interface Props {
   weather: WeatherNow;
@@ -9,8 +10,7 @@ interface Props {
 }
 
 export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution }: Props) {
-  const t = new Date(fetchedAt);
-  const updated = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const updated = fmtTime(fetchedAt);
   // Source label: prefer the local sub-area NWS resolves for this lat/lon
   // (e.g. "Tybee Island, GA") over the broader forecast-office name.
   // The office itself is shown after the dot for transparency.

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { WeatherDay, NwsAttribution } from "@/lib/types";
+import { STATION_TZ } from "@/lib/time";
 
 function iconFor(forecast: string) {
   const f = forecast.toLowerCase();
@@ -70,8 +71,9 @@ export default function WeeklyTile({ days, attribution }: Props) {
                   <div style={{
                     fontSize: 10, color: "var(--text-faint)", marginTop: 2,
                   }}>
-                    {new Date(d.date + "T12:00:00").toLocaleDateString(undefined, {
+                    {new Date(d.date + "T12:00:00-04:00").toLocaleDateString("en-US", {
                       month: "short", day: "numeric",
+                      timeZone: STATION_TZ,
                     })}
                   </div>
                 </div>

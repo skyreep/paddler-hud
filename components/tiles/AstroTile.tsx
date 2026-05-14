@@ -1,8 +1,9 @@
 import type { AstroResponse } from "@/lib/types";
+import { fmtTime } from "@/lib/time";
 
 function t(iso: string | null) {
   if (!iso || iso === "—") return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return fmtTime(iso);
 }
 
 export default function AstroTile({ astro }: { astro: AstroResponse }) {

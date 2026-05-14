@@ -1,14 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SolunarPeriod } from "@/lib/types";
+import { fmtTime } from "@/lib/time";
 
 function fmtRange(start: string, end: string): string {
-  const s = new Date(start), e = new Date(end);
-  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-  return `${s.toLocaleTimeString([], opts)} – ${e.toLocaleTimeString([], opts)}`;
-}
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${fmtTime(start)} – ${fmtTime(end)}`;
 }
 
 /** Major / minor solunar feeding periods for the day, computed from the moon's

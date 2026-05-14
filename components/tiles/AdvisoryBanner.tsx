@@ -1,4 +1,5 @@
 import type { Alert, TropicalResponse } from "@/lib/types";
+import { STATION_TZ } from "@/lib/time";
 
 interface Props {
   alerts: Alert[];
@@ -101,7 +102,7 @@ export default function AdvisoryBanner({ alerts, tropical }: Props) {
             <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>{top.event}</h3>
             <p style={{ margin: 0, fontSize: 13 }}>{top.headline}</p>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, fontWeight: 600, letterSpacing: ".3px", textTransform: "uppercase" }}>
-              Expires {new Date(top.expires).toLocaleString([], { hour: "numeric", minute: "2-digit", weekday: "short" })} · {top.senderName}
+              Expires {new Date(top.expires).toLocaleString("en-US", { hour: "numeric", minute: "2-digit", weekday: "short", timeZone: STATION_TZ })} · {top.senderName}
             </div>
             {alerts.length > 1 && (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>

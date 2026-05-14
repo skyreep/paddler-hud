@@ -1,4 +1,5 @@
 import type { BuoyResponse } from "@/lib/types";
+import { fmtTime } from "@/lib/time";
 
 /**
  * Marine conditions tile. The wave visualization is now data-driven:
@@ -154,7 +155,7 @@ export default function MarineTile({ buoy }: { buoy: BuoyResponse }) {
     ? `Marine · NDBC ${buoy.buoyId}`
     : "Marine · Modelled (Open-Meteo)";
   const subtitle = buoy.observedAt
-    ? new Date(buoy.observedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    ? fmtTime(buoy.observedAt)
     : "";
 
   return (
