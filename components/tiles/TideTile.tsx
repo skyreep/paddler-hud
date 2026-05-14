@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { TideResponse } from "@/lib/types";
+import { fmtTime } from "@/lib/time";
 
 export default function TideTile({ tides, stationNote, liveTideFt }: {
   tides: TideResponse;
@@ -153,7 +154,7 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
               {e.type === "H" ? "High" : "Low"}
             </div>
             <div className="num" style={{ fontWeight: 700, fontSize: 16 }}>
-              {new Date(e.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              {fmtTime(e.time)}
             </div>
             <div className="num" style={{ color: "var(--text-muted)", fontSize: 12 }}>{e.height.toFixed(1)} ft</div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import type { TideResponse, TideExtreme } from "@/lib/types";
+import { fmtTime, STATION_TZ } from "@/lib/time";
 
 interface DaySummary {
   date: string;          // YYYY-MM-DD
@@ -25,16 +26,13 @@ function summarize(extremes: TideExtreme[]): DaySummary[] {
     const maxHigh = highs.length ? Math.max(...highs.map(h => h.height)) : 0;
     const minLow  = lows.length  ? Math.min(...lows.map(l => l.height))  : 0;
     const range = maxHigh - minLow;
-    const d = new Date(`${date}T12:00:00`);
-    const label = d.toLocaleDateString(undefined, {
+    const d = new Date(`${date}T12:00:00-04:00`);  // anchor midday Eastern
+    const label = d.toLocaleDateString("en-US", {
       weekday: "short", month: "short", day: "numeric",
+      timeZone: STATION_TZ,
     });
     return { date, label, highs, lows, range, maxHigh, minLow };
   });
-}
-
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 export default function TideMonthTile({ tides }: { tides: TideResponse }) {

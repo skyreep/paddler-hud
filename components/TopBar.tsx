@@ -158,4 +158,7 @@ const avatarBtn: React.CSSProperties = {
   background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
   color: "white", border: "none", fontWeight: 700, fontSize: 14,
   display: "grid", placeItems: "center", cursor: "pointer",
+  flexShrink: 0,           // ← keep circle round on tight phone widths
+  aspectRatio: "1",        // ← double-defense
+  padding: 0,
 };

@@ -32,8 +32,29 @@ function buildUrl(p: CoopsParams) {
   return `${BASE}?${q.toString()}`;
 }
 
-// Helper — parse the CO-OPS "yyyy-MM-dd HH:mm" local timestamp into ISO without timezone.
-function coopsTimeToISO(t: string) { return t.replace(" ", "T"); }
+/** Parse the CO-OPS "yyyy-MM-dd HH:mm" Eastern-local timestamp into a full
+ *  ISO string with an explicit timezone offset (-04:00 in DST, -05:00 in
+ *  standard time). Without the offset, iOS Safari occasionally parses the
+ *  string as UTC instead of local, shifting every displayed time by ~4 hours.
+ *  Stations we serve are all Eastern Time, so we hardcode the rule. */
+function isEasternDst(yyyymmdd: string): boolean {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  if (m < 3 || m > 11) return false;
+  if (m > 3 && m < 11) return true;
+  // March: DST starts the second Sunday. November: DST ends the first Sunday.
+  const firstOfMonth = new Date(Date.UTC(y, m - 1, 1));
+  const firstSunday = 1 + ((7 - firstOfMonth.getUTCDay()) % 7);
+  if (m === 3) return d >= firstSunday + 7;
+  if (m === 11) return d < firstSunday;
+  return false;
+}
+
+function coopsTimeToISO(t: string): string {
+  // "2024-05-13 14:30" → "2024-05-13T14:30:00-04:00"
+  const dateStr = t.slice(0, 10);
+  const offset = isEasternDst(dateStr) ? "-04:00" : "-05:00";
+  return `${t.replace(" ", "T")}:00${offset}`;
+}
 
 /** Today's 6-min predictions + today's hi/lo + 30-day hi/lo extremes.
  *

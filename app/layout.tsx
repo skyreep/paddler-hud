@@ -23,14 +23,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
         />
-        {/* Set initial theme before paint to avoid a flash. */}
+        {/* Set initial theme before paint to avoid a flash.
+            Defensive about iOS Safari edge cases:
+            - localStorage may throw in private mode (handled with try/catch).
+            - matchMedia.matches sometimes returns stale "false" on first paint
+              even when system is dark; we re-check in TopBar.tsx after hydration. */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
+            var dark = false;
             try {
-              var t = localStorage.getItem('phud_theme') || 'auto';
-              var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-              document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+              var saved = null;
+              try { saved = localStorage.getItem('phud_theme'); } catch (e) {}
+              var t = saved || 'auto';
+              if (t === 'dark') {
+                dark = true;
+              } else if (t === 'auto') {
+                try {
+                  var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+                  dark = !!(mq && mq.matches);
+                } catch (e) {}
+              }
             } catch (e) {}
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
           })();
         `}} />
       </head>

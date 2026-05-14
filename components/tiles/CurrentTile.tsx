@@ -1,10 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { CurrentResponse } from "@/lib/types";
-
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
+import { fmtTime } from "@/lib/time";
 
 export default function CurrentTile({ currents }: { currents: CurrentResponse }) {
   const [nowTime, setNowTime] = useState<Date | null>(null);
