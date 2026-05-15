@@ -50,7 +50,11 @@ export async function fetchAtmospheric(lat: number, lon: number): Promise<Atmosp
     timezone: "auto",
   });
   try {
-    const res = await fetch(`${WX_BASE}?${params}`, { next: { revalidate: 1800 } });
+    // 60s revalidate — UV swings by ~1 unit every 15 min near sunrise/sunset,
+    // so a 30-min cache leaves the refresh button feeling broken. Open-Meteo
+    // is free with no rate limits for non-commercial use, so the extra fetches
+    // are essentially free.
+    const res = await fetch(`${WX_BASE}?${params}`, { next: { revalidate: 60 } });
     if (!res.ok) return empty;
     const json = (await res.json()) as AtmosphericResponse;
     const times = json.hourly?.time ?? [];
