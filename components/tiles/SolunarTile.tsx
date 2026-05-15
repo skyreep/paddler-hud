@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SolunarPeriod } from "@/lib/types";
-import { fmtTime } from "@/lib/time";
+import { fmtTime, stationDayStart } from "@/lib/time";
 
 function fmtRange(start: string, end: string): string {
   return `${fmtTime(start)} – ${fmtTime(end)}`;
@@ -24,12 +24,10 @@ export default function SolunarTile({ periods }: { periods: SolunarPeriod[] }) {
 
   if (!periods || periods.length === 0) return null;
 
-  // Day timeline 0..1.
-  const dayStart = (() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  })();
+  // Day timeline 0..1 — anchored to EASTERN midnight, not device-local
+  // midnight, so the bands line up with the labels (which are also Eastern)
+  // even when the user's device is in a different timezone.
+  const dayStart = stationDayStart();
   const dayEnd = dayStart + 24 * 3600_000;
   const pctOf = (t: number) => Math.max(0, Math.min(100, ((t - dayStart) / (dayEnd - dayStart)) * 100));
   const nowPct = now != null ? pctOf(now) : null;

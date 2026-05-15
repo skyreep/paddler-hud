@@ -96,6 +96,7 @@ interface ForecastPeriod {
   isDaytime: boolean;
   temperature: number;
   windSpeed: string;        // "10 to 15 mph"
+  windGust?: string;        // "25 mph" — separate from sustained wind, optional
   windDirection: string;    // "NW"
   shortForecast: string;
   detailedForecast?: string;
@@ -111,6 +112,14 @@ function parseWindMph(s?: string): { min: number; max: number; mid: number } {
   if (!m) return { min: 0, max: 0, mid: 0 };
   const min = Number(m[1]); const max = m[2] ? Number(m[2]) : min;
   return { min, max, mid: (min + max) / 2 };
+}
+
+/** Parse a gust string like "25 mph" or "20 to 30 mph". Returns the peak mph. */
+function parseGustMph(s?: string): number {
+  if (!s) return 0;
+  // Range "20 to 30 mph" — use the higher end. Single "25 mph" — use it.
+  const matches = [...s.matchAll(/(\d+)/g)].map(m => Number(m[1]));
+  return matches.length ? Math.max(...matches) : 0;
 }
 function dirToDeg(card: string): number {
   const map: Record<string, number> = {
@@ -153,13 +162,17 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
   const pressureNow   = grid?.pressure ? gridValueAt(grid.pressure, nowIso) : null;     // Pa
   const visNow        = grid?.visibility ? gridValueAt(grid.visibility, nowIso) : null; // meters
 
+  // Real gust comes from NWS's separate windGust field (only populated when
+  // a significant gust is forecast). Don't fall back to the sustained-wind
+  // upper bound — that's a sustained range, not a peak gust.
+  const gustNowMph = parseGustMph(h?.windGust);
   const now: WeatherNow = {
     tempF: h?.temperature ?? 0,
     feelsLikeF: h?.temperature ?? 0,
     shortForecast: h?.shortForecast ?? "",
     windSpeedKt: +windKt.toFixed(1),
     windSpeedMph: +windMph.mid.toFixed(1),
-    windGustKt: windMph.max ? +mphToKt(windMph.max).toFixed(1) : undefined,
+    windGustKt: gustNowMph > 0 ? +mphToKt(gustNowMph).toFixed(1) : undefined,
     windDirDeg: dirDeg,
     windDirCardinal: h?.windDirection ?? cardinal(dirDeg),
     beaufortForce: bf.force,
@@ -202,7 +215,10 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
     const dayName = new Date(p.startTime).toLocaleDateString("en-US", { weekday: "short" });
     const wind = parseWindMph(p.windSpeed);
     const windKtVal = +mphToKt(wind.mid).toFixed(0);
-    const gustKtVal = wind.max && wind.max !== wind.min ? +mphToKt(wind.max).toFixed(0) : undefined;
+    // Real gust comes from the windGust field. Don't substitute the sustained-
+    // wind upper bound when no gust is forecast — that would over-report.
+    const gustMph = parseGustMph(p.windGust);
+    const gustKtVal = gustMph > 0 ? +mphToKt(gustMph).toFixed(0) : undefined;
     const dirCard = p.windDirection;
     const existing = dailyMap.get(date);
     if (existing) {

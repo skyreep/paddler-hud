@@ -107,11 +107,14 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
     // Refresh the index every 5 minutes so the nowcast stays current.
     const refreshId = setInterval(() => {
       fetch("https://api.rainviewer.com/public/weather-maps.json", { cache: "no-store" })
-        .then(r => r.json())
-        .then((data: RvIndex) => {
-          if (cancelled) return;
+        .then(r => r.ok ? r.json() : null)
+        .then((data: RvIndex | null) => {
+          if (cancelled || !data?.radar) return;
           const past = data.radar.past ?? [];
           const nowcast = data.radar.nowcast ?? [];
+          // Don't clobber a working frame set with an empty/broken response —
+          // some refreshes return partial payloads that would drop the nowcast.
+          if (past.length === 0) return;
           setHost(data.host);
           setFrames([...past, ...nowcast]);
           setNowcastStartIdx(past.length);
@@ -273,12 +276,14 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
     const oldest = frames[0];
     const newest = frames[frames.length - 1];
     const nowFrame = frames[Math.max(0, nowcastStartIdx - 1)];
+    const hasFuture = nowcastStartIdx < frames.length;
     result.push({ ratio: 0, label: formatOffset(oldest.time - nowSec) });
     result.push({
-      ratio: nowcastStartIdx > 0 ? (nowcastStartIdx - 1) / (frames.length - 1) : 0,
+      // Anchor "Now" to where the last past frame sits on the slider.
+      ratio: frames.length > 1 ? (nowcastStartIdx - 1) / (frames.length - 1) : 0,
       label: "Now",
     });
-    if (newest !== nowFrame) {
+    if (hasFuture && newest !== nowFrame) {
       result.push({ ratio: 1, label: formatOffset(newest.time - nowSec) });
     }
     return result;

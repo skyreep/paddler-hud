@@ -5,6 +5,7 @@
 
 import SunCalc from "suncalc";
 import type { AstroResponse, SolunarPeriod } from "./types";
+import { stationDayStart, stationToday } from "./time";
 
 function iso(d?: Date) { return d ? d.toISOString() : "—"; }
 
@@ -66,9 +67,11 @@ function daysUntil(d: Date, mmdd: [number, number]): number {
   return Math.round((target.getTime() - d.getTime()) / 86400000);
 }
 
-/** Approximate moon transit (overhead) and underfoot times by scanning altitude. */
+/** Approximate moon transit (overhead) and underfoot times by scanning altitude.
+ *  Anchored to Eastern midnight rather than server-local midnight so localhost
+ *  (Eastern) and Vercel (UTC) produce identical results. */
 function findMoonTransits(date: Date, lat: number, lon: number) {
-  const startMs = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0).getTime();
+  const startMs = stationDayStart(date);
   let maxAlt = -Infinity, transit: Date | null = null;
   let minAlt = Infinity,  underfoot: Date | null = null;
   // 30-minute resolution is enough for solunar window labeling.
@@ -82,7 +85,10 @@ function findMoonTransits(date: Date, lat: number, lon: number) {
 }
 
 function solunarPeriods(date: Date, lat: number, lon: number): SolunarPeriod[] {
-  const moon = SunCalc.getMoonTimes(date, lat, lon, true);
+  // Use Eastern-noon "today" so moon rise/set lookups land on the right day
+  // regardless of whether the server is in UTC or Eastern.
+  const today = stationToday(date);
+  const moon = SunCalc.getMoonTimes(today, lat, lon, true);
   const { transit, underfoot } = findMoonTransits(date, lat, lon);
   const periods: SolunarPeriod[] = [];
 

@@ -48,3 +48,38 @@ export function fmtHourBare(iso: string): string {
     timeZone: STATION_TZ,
   }).replace(/\s?[AaPp][Mm]$/, "");
 }
+
+/** True if the given Eastern calendar date is in Daylight Saving Time. */
+function isEasternDst(yyyymmdd: string): boolean {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  if (m < 3 || m > 11) return false;
+  if (m > 3 && m < 11) return true;
+  const firstOfMonth = new Date(Date.UTC(y, m - 1, 1));
+  const firstSunday = 1 + ((7 - firstOfMonth.getUTCDay()) % 7);
+  if (m === 3)  return d >= firstSunday + 7;
+  if (m === 11) return d <  firstSunday;
+  return false;
+}
+
+/** Returns the UTC timestamp (ms) of Eastern midnight on the current
+ *  Eastern calendar day. Used to anchor day-long timelines and scans to
+ *  the user's actual paddling day, regardless of where the server or
+ *  client device thinks midnight is. */
+export function stationDayStart(now: Date = new Date()): number {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: STATION_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  const y = parts.find(p => p.type === "year")!.value;
+  const m = parts.find(p => p.type === "month")!.value;
+  const d = parts.find(p => p.type === "day")!.value;
+  const offset = isEasternDst(`${y}-${m}-${d}`) ? "-04:00" : "-05:00";
+  return new Date(`${y}-${m}-${d}T00:00:00${offset}`).getTime();
+}
+
+/** Date representing noon-Eastern of today (a safe instant that's always
+ *  within "today Eastern" regardless of caller's timezone). */
+export function stationToday(now: Date = new Date()): Date {
+  return new Date(stationDayStart(now) + 12 * 3600_000);
+}
