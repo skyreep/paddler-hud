@@ -19,32 +19,43 @@ import type { BuoyResponse } from "./types";
 const WX_BASE = "https://api.open-meteo.com/v1/forecast";
 const MARINE_BASE = "https://marine-api.open-meteo.com/v1/marine";
 
-// ---------- UV ----------
+// ---------- Atmospheric (UV, visibility, pressure) ----------
 
-interface UvResponse {
+interface AtmosphericResponse {
   hourly?: {
     time?: string[];
     uv_index?: (number | null)[];
+    visibility?: (number | null)[];     // meters
+    pressure_msl?: (number | null)[];   // hPa, sea-level
   };
 }
 
-/** Get the current UV index for a lat/lon. Returns null if Open-Meteo declines. */
-export async function fetchUvIndex(lat: number, lon: number): Promise<number | null> {
+export interface AtmosphericNow {
+  uvIndex: number | null;
+  visibilityMi: number | null;
+  pressureInHg: number | null;
+}
+
+/** Fetch UV + visibility + pressure from Open-Meteo for the current hour.
+ *  NWS gridpoint publishes these fields but most CWAs (Charleston included)
+ *  don't reliably populate visibility or pressure. Open-Meteo's ECMWF/GFS
+ *  blend has them globally. */
+export async function fetchAtmospheric(lat: number, lon: number): Promise<AtmosphericNow> {
+  const empty: AtmosphericNow = { uvIndex: null, visibilityMi: null, pressureInHg: null };
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
-    hourly: "uv_index",
+    hourly: "uv_index,visibility,pressure_msl",
     forecast_days: "1",
     timezone: "auto",
   });
   try {
     const res = await fetch(`${WX_BASE}?${params}`, { next: { revalidate: 1800 } });
-    if (!res.ok) return null;
-    const json = (await res.json()) as UvResponse;
+    if (!res.ok) return empty;
+    const json = (await res.json()) as AtmosphericResponse;
     const times = json.hourly?.time ?? [];
-    const uvs = json.hourly?.uv_index ?? [];
-    if (!times.length) return null;
-    // Find the row whose ISO hour is closest to "now" (local time of point).
+    if (!times.length) return empty;
+    // Find the row closest to "now".
     const now = Date.now();
     let bestIdx = 0, bestDiff = Infinity;
     for (let i = 0; i < times.length; i++) {
@@ -52,12 +63,24 @@ export async function fetchUvIndex(lat: number, lon: number): Promise<number | n
       const d = Math.abs(t - now);
       if (d < bestDiff) { bestDiff = d; bestIdx = i; }
     }
-    const v = uvs[bestIdx];
-    if (v == null) return null;
-    return +v.toFixed(1);
+    const uv  = json.hourly?.uv_index?.[bestIdx];
+    const vis = json.hourly?.visibility?.[bestIdx];   // m
+    const p   = json.hourly?.pressure_msl?.[bestIdx]; // hPa
+    return {
+      uvIndex:      uv  != null ? +uv.toFixed(1) : null,
+      visibilityMi: vis != null ? +(vis / 1609.34).toFixed(1) : null,
+      // hPa → inHg: 1 hPa = 0.02953 inHg
+      pressureInHg: p   != null ? +(p * 0.02953).toFixed(2) : null,
+    };
   } catch {
-    return null;
+    return empty;
   }
+}
+
+/** Back-compat shim — UV-only call site. */
+export async function fetchUvIndex(lat: number, lon: number): Promise<number | null> {
+  const a = await fetchAtmospheric(lat, lon);
+  return a.uvIndex;
 }
 
 // ---------- Marine ----------

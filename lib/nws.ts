@@ -5,7 +5,7 @@ import type {
   Alert, AlertsResponse, WeatherDay, WeatherHour, WeatherNow, WeatherResponse,
 } from "./types";
 import { beaufort, cardinal, mphToKt } from "./beaufort";
-import { fetchUvIndex } from "./open-meteo";
+import { fetchAtmospheric } from "./open-meteo";
 
 const UA = () => process.env.NWS_USER_AGENT ?? "PaddlerHUD/0.1 (contact@example.com)";
 
@@ -133,15 +133,16 @@ function cToF(c: number | null | undefined) { return c == null ? undefined : (c 
 /** Get a normalized weather payload for a lat/lon: now, hourly 24h, daily 7d. */
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherResponse> {
   const point = await nws<PointResp>(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, 86400);
-  const [forecast, hourly, gridRaw, openMeteoUv] = await Promise.all([
+  const [forecast, hourly, gridRaw, atmos] = await Promise.all([
     nws<ForecastResp>(point.properties.forecast, 1800),
     nws<ForecastResp>(point.properties.forecastHourly, 900),
     // Gridpoint endpoint carries quantitative precip, sky cover, pressure, visibility.
-    // (UV is NOT consistently populated by all NWS forecast offices — we use
-    //  Open-Meteo for UV instead; see below.)
+    // Charleston (and many other CWAs) inconsistently populates the latter three,
+    // so we always pull a fallback from Open-Meteo and prefer the gridpoint
+    // value only when it's actually present.
     nws<GridpointResp>(point.properties.forecastGridData, 1800).catch(() => null),
-    // UV index from Open-Meteo (CAMS) — globally available, no key.
-    fetchUvIndex(lat, lon),
+    // UV + visibility + pressure from Open-Meteo (no key, globally available).
+    fetchAtmospheric(lat, lon),
   ]);
 
   const h = hourly.properties.periods[0];
@@ -154,13 +155,17 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
   const sixHrIso = new Date(Date.now() + 6 * 3600_000).toISOString();
   const grid = gridRaw?.properties;
 
-  // Prefer Open-Meteo UV (consistently populated); fall back to NWS gridpoint if present.
-  const uvNow         = openMeteoUv ?? (grid?.uvIndex ? gridValueAt(grid.uvIndex, nowIso) : null);
+  // Prefer Open-Meteo for UV / visibility / pressure (consistently populated
+  // worldwide); fall back to NWS gridpoint values only if Open-Meteo is null.
+  const gridUv       = grid?.uvIndex ? gridValueAt(grid.uvIndex, nowIso) : null;
+  const gridPressurePa = grid?.pressure ? gridValueAt(grid.pressure, nowIso) : null;
+  const gridVisM     = grid?.visibility ? gridValueAt(grid.visibility, nowIso) : null;
+  const uvNow         = atmos.uvIndex      ?? gridUv;
+  const pressureInHg  = atmos.pressureInHg ?? (gridPressurePa != null ? +(gridPressurePa * 0.0002953).toFixed(2) : null);
+  const visibilityMi  = atmos.visibilityMi ?? (gridVisM != null ? +(gridVisM / 1609.34).toFixed(1) : null);
   const precipNext6mm = grid?.quantitativePrecipitation
     ? gridSumWindow(grid.quantitativePrecipitation, nowIso, sixHrIso) : null;
   const cloudNow      = grid?.skyCover ? gridValueAt(grid.skyCover, nowIso) : null;
-  const pressureNow   = grid?.pressure ? gridValueAt(grid.pressure, nowIso) : null;     // Pa
-  const visNow        = grid?.visibility ? gridValueAt(grid.visibility, nowIso) : null; // meters
 
   // Real gust comes from NWS's separate windGust field (only populated when
   // a significant gust is forecast). Don't fall back to the sustained-wind
@@ -183,8 +188,8 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
     precipAmountIn: mmToIn(precipNext6mm) ?? undefined,
     uvIndex: uvNow ?? undefined,
     cloudCoverPct: cloudNow ?? undefined,
-    pressureInHg: pressureNow != null ? +(pressureNow * 0.0002953).toFixed(2) : undefined,
-    visibilityMi: visNow != null ? +(visNow / 1609.34).toFixed(1) : undefined,
+    pressureInHg: pressureInHg ?? undefined,
+    visibilityMi: visibilityMi ?? undefined,
   };
 
   const hourlyOut: WeatherHour[] = hourly.properties.periods.slice(0, 24).map(p => {

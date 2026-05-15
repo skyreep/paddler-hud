@@ -72,12 +72,10 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
             ? <span className={`pill ${uvClass(weather.uvIndex)}`}>{weather.uvIndex} — {uvLabel(weather.uvIndex)}</span>
             : "—"
         } />
-        {weather.pressureInHg != null && (
-          <Row label="Pressure" value={`${weather.pressureInHg.toFixed(2)} inHg`} />
-        )}
-        {weather.visibilityMi != null && (
-          <Row label="Visibility" value={`${weather.visibilityMi.toFixed(1)} mi`} />
-        )}
+        <Row label="Visibility" value={visibilityValue(weather.visibilityMi)} />
+        <Row label="Pressure" value={
+          weather.pressureInHg != null ? `${weather.pressureInHg.toFixed(2)} inHg` : "—"
+        } />
       </div>
     </section>
   );
@@ -100,6 +98,20 @@ function uvClass(uv: number): "good" | "warn" | "bad" {
   if (uv < 3) return "good";
   if (uv < 8) return "warn";
   return "bad";
+}
+
+/** Visibility row value with fog-hazard pill styling.
+ *  Paddler-relevant thresholds:
+ *    < 0.5 mi : Dense fog (red — disorientation hazard)
+ *    < 2 mi   : Fog / haze (amber — keep close to shore)
+ *    ≥ 2 mi   : Clear-ish (green) */
+function visibilityValue(miles: number | undefined): React.ReactNode {
+  if (miles == null) return "—";
+  const v = miles.toFixed(1);
+  if (miles < 0.5) return <span className="pill bad">{v} mi — Dense fog</span>;
+  if (miles < 2)   return <span className="pill warn">{v} mi — Fog/haze</span>;
+  if (miles < 6)   return <span className="pill warn" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{v} mi — Reduced</span>;
+  return <span>{v} mi</span>;
 }
 
 const pill: React.CSSProperties = {

@@ -132,7 +132,24 @@ export interface RiverGauge {
   stageAt8amFt: number | null;
   change24hFt: number | null;
   floodStageFt: number | null;
-  status: "normal" | "action" | "minor" | "moderate" | "major" | "unknown";
+  /** Paddler-relevant flow classification.
+   *  Low end is based on USGS historical-percentile statistics for today's
+   *  day-of-year (drought visibility). High end uses the NWS AHPS flood stages. */
+  status:
+    | "very-low"   // < P10 — drought / sections may be unpaddleable
+    | "low"        // P10-P25 — below normal, watch for shallow spots
+    | "normal"     // P25-P75 — typical seasonal flow
+    | "high"       // P75-P90 — above normal, good flow
+    | "very-high"  // > P90 — much above normal
+    | "action"     // approaching flood stage
+    | "minor"      // minor flood
+    | "moderate"   // moderate flood
+    | "major"      // major flood
+    | "unknown";
+  /** Today's discharge as a percentile of the long-term record (0-100). */
+  flowPercentile: number | null;
+  /** P50 (median) discharge for today's day-of-year, for context. */
+  medianFlowCfs: number | null;
   dischargeCfs: number | null;
   fetchedAt: string;
 }

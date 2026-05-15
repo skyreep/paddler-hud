@@ -26,13 +26,7 @@ export default function MapTile({ lat, lon, displayName }: Props) {
   const mapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const overlayRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const noaaLayerRef = useRef<any>(null);
   const [chartsOn, setChartsOn] = useState(true);
-  // NOAA RNC overlay = the actual published US nautical chart raster. Covers
-  // every charted day-beacon, can, nun, dolphin, etc. — comprehensive where
-  // OpenSeaMap's crowdsourced marks are sparse.
-  const [noaaOn, setNoaaOn] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // Inject Leaflet's stylesheet once per page.
@@ -105,18 +99,6 @@ export default function MapTile({ lat, lon, displayName }: Props) {
       if (chartsOn) sea.addTo(map);
       overlayRef.current = sea;
 
-      // ---- Optional: NOAA RNC chart overlay (official US nautical charts) ----
-      // This is the same raster chart used by Coast Guard / NOAA chart viewer.
-      // It's a full chart (not just marks), so it covers the satellite image —
-      // semi-transparent so a hint of land/water shows through.
-      const noaa = L.tileLayer("https://tileservice.charts.noaa.gov/tiles/50000_1/{z}/{x}/{y}.png", {
-        attribution: "Nautical charts © NOAA Office of Coast Survey",
-        maxZoom: 18,
-        opacity: 0.85,
-      });
-      if (noaaOn) noaa.addTo(map);
-      noaaLayerRef.current = noaa;
-
       // ---- Marker at the active location ----
       const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#1d8fc9";
       const divIcon = L.divIcon({
@@ -156,15 +138,6 @@ export default function MapTile({ lat, lon, displayName }: Props) {
     if (chartsOn) { if (!map.hasLayer(sea)) sea.addTo(map); }
     else          { if (map.hasLayer(sea))  map.removeLayer(sea); }
   }, [chartsOn]);
-
-  // Toggle NOAA RNC chart overlay without rebuilding the map.
-  useEffect(() => {
-    const map = mapRef.current;
-    const noaa = noaaLayerRef.current;
-    if (!map || !noaa) return;
-    if (noaaOn) { if (!map.hasLayer(noaa)) noaa.addTo(map); }
-    else        { if (map.hasLayer(noaa))  map.removeLayer(noaa); }
-  }, [noaaOn]);
 
   function recenter() {
     if (mapRef.current) mapRef.current.setView([lat, lon], 13, { animate: true });
@@ -210,7 +183,7 @@ export default function MapTile({ lat, lon, displayName }: Props) {
           <button
             className={`phud-map-btn ${chartsOn ? "on" : ""}`}
             onClick={() => setChartsOn(v => !v)}
-            title="Toggle OpenSeaMap nautical marks (channel buoys, beacons, lights — crowdsourced, sparse in some areas)"
+            title="Toggle OpenSeaMap nautical marks (channel buoys, beacons, lights)"
             aria-pressed={chartsOn}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -218,18 +191,6 @@ export default function MapTile({ lat, lon, displayName }: Props) {
               <circle cx="12" cy="12" r="4" />
             </svg>
             <span>Marks</span>
-          </button>
-          <button
-            className={`phud-map-btn ${noaaOn ? "on" : ""}`}
-            onClick={() => setNoaaOn(v => !v)}
-            title="Toggle NOAA RNC nautical chart overlay (official US charts — every charted day-beacon, can, nun, dolphin)"
-            aria-pressed={noaaOn}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 4h16v16H4z" />
-              <path d="M4 9h16M9 4v16" />
-            </svg>
-            <span>NOAA</span>
           </button>
           <button className="phud-map-btn" onClick={locateMe} title="Center on my GPS location">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -252,7 +213,6 @@ export default function MapTile({ lat, lon, displayName }: Props) {
       }}>
         Imagery © Esri, Maxar, Earthstar Geographics.
         {chartsOn && <> Marks © OpenSeaMap contributors.</>}
-        {noaaOn && <> Charts © NOAA Office of Coast Survey.</>}
       </div>
     </section>
   );

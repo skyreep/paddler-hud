@@ -80,49 +80,46 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
     document.head.appendChild(link);
   }, []);
 
-  // ----- fetch RainViewer index -----
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("https://api.rainviewer.com/public/weather-maps.json", { cache: "no-store" });
-        if (!res.ok) throw new Error(`RainViewer ${res.status}`);
-        const data = (await res.json()) as RvIndex;
-        if (cancelled) return;
-        const past = data.radar.past ?? [];
-        const nowcast = data.radar.nowcast ?? [];
-        const all = [...past, ...nowcast];
-        if (all.length === 0) {
-          setErr("Radar feed empty.");
-          return;
-        }
-        setHost(data.host);
-        setFrames(all);
-        setNowcastStartIdx(past.length);
-        setIdx(Math.max(0, past.length - 1));   // default to current
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Radar load failed.");
+  // Cache-busted URL — RainViewer's CDN caches the index aggressively, and
+  // when a regeneration cycle returns 0 nowcast frames, that empty response
+  // can stick around in the CDN for a while. A per-request timestamp param
+  // forces a fresh origin hit every time.
+  const indexUrl = () =>
+    `https://api.rainviewer.com/public/weather-maps.json?t=${Date.now()}`;
+
+  // ----- fetch loader (shared by initial load, auto-refresh, and Retry button) -----
+  const loadIndex = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(indexUrl(), { cache: "no-store", signal });
+      if (!res.ok) throw new Error(`RainViewer ${res.status}`);
+      const data = (await res.json()) as RvIndex;
+      if (!data?.radar) throw new Error("Unexpected RainViewer response shape");
+      const past = data.radar.past ?? [];
+      const nowcast = data.radar.nowcast ?? [];
+      const all = [...past, ...nowcast];
+      if (all.length === 0) {
+        setErr("Radar feed empty.");
+        return;
       }
-    })();
-    // Refresh the index every 5 minutes so the nowcast stays current.
-    const refreshId = setInterval(() => {
-      fetch("https://api.rainviewer.com/public/weather-maps.json", { cache: "no-store" })
-        .then(r => r.ok ? r.json() : null)
-        .then((data: RvIndex | null) => {
-          if (cancelled || !data?.radar) return;
-          const past = data.radar.past ?? [];
-          const nowcast = data.radar.nowcast ?? [];
-          // Don't clobber a working frame set with an empty/broken response —
-          // some refreshes return partial payloads that would drop the nowcast.
-          if (past.length === 0) return;
-          setHost(data.host);
-          setFrames([...past, ...nowcast]);
-          setNowcastStartIdx(past.length);
-        })
-        .catch(() => {/* silent */});
-    }, 5 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(refreshId); };
+      setErr(null);
+      setHost(data.host);
+      setFrames(all);
+      setNowcastStartIdx(past.length);
+      // Only reset idx on initial load (when there were no frames yet).
+      setIdx(prev => prev === 0 && all.length > 1 ? Math.max(0, past.length - 1) : prev);
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      setErr(e instanceof Error ? e.message : "Radar load failed.");
+    }
   }, []);
+
+  // ----- initial load + 5-min auto-refresh -----
+  useEffect(() => {
+    const controller = new AbortController();
+    loadIndex(controller.signal);
+    const refreshId = setInterval(() => loadIndex(), 5 * 60 * 1000);
+    return () => { controller.abort(); clearInterval(refreshId); };
+  }, [loadIndex]);
 
   // ----- helper: pick base tile URL by current theme -----
   function baseUrlForTheme(): string {
@@ -386,6 +383,22 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
             </svg>
             <span style={{ fontSize: 12, fontWeight: 700 }}>Now</span>
           </button>
+
+          {/* Manual refresh of the RainViewer index. Useful when their model
+              is in a regeneration cycle and returns 0 forecast frames; without
+              waiting the full 5-min auto-refresh, the user can poke it. */}
+          <button
+            onClick={() => loadIndex()}
+            className="phud-radar-btn"
+            aria-label="Retry radar feed"
+            title="Re-fetch the RainViewer index (useful when forecast frames are missing)"
+            style={{ marginLeft: "auto" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
         </div>
 
         {/* Scrubber on its own row so it has the full tile width to work with. */}
@@ -426,6 +439,20 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
           fontSize: 11, color: "var(--text-faint)", lineHeight: 1.4,
           paddingTop: 4,
         }}>
+          {frames.length > 0 && (
+            <div style={{ marginBottom: 6, color: "var(--text-muted)", fontWeight: 600 }}>
+              Loaded · {nowcastStartIdx} past frame{nowcastStartIdx === 1 ? "" : "s"}
+              {" · "}
+              <span style={{ color: frames.length - nowcastStartIdx > 0 ? "var(--accent-2)" : "var(--bad)" }}>
+                {frames.length - nowcastStartIdx} forecast frame{frames.length - nowcastStartIdx === 1 ? "" : "s"}
+              </span>
+              {frames.length - nowcastStartIdx === 0 && (
+                <span style={{ display: "block", color: "var(--text-faint)", fontWeight: 400, marginTop: 2 }}>
+                  RainViewer&apos;s nowcast model is regenerating — tap the retry button above to check again, or wait for the next auto-refresh in 5 min.
+                </span>
+              )}
+            </div>
+          )}
           Past 2 hours + 30 min nowcast · Drag the slider to scrub · Past frames in {" "}
           <strong style={{ color: "var(--text-muted)" }}>standard radar</strong>; forecast in {" "}
           <strong style={{ color: "var(--accent-2)" }}>cyan</strong>.
