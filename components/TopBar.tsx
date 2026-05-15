@@ -2,6 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import LocationPicker from "./LocationPicker";
+import { refreshHud } from "@/app/actions";
 
 interface Props {
   locationName: string;
@@ -48,7 +49,15 @@ export default function TopBar({ locationName, stationKey }: Props) {
 
   const [isRefreshing, startRefreshTransition] = useTransition();
   function refresh() {
-    startRefreshTransition(() => { router.refresh(); });
+    startRefreshTransition(async () => {
+      // 1. Server action: invalidate Next.js's Full Route Cache + Data Cache
+      //    for "/", so the next request actually re-fetches upstream APIs
+      //    instead of returning the previously-cached UV/visibility/etc.
+      await refreshHud();
+      // 2. Client: re-fetch the page payload from the server, which now
+      //    has nothing cached and will run the fetches fresh.
+      router.refresh();
+    });
   }
 
   return (
