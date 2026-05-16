@@ -2,14 +2,14 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Paddler HUD",
+  title: "LoCo WX",
   description: "Mobile-first marine dashboard for paddlers of the Lowcountry.",
-  applicationName: "Paddler HUD",
+  applicationName: "LoCo WX",
   // When added to an iOS home screen, the app launches in standalone mode
   // (no Safari chrome) with a translucent status bar over the topbar.
   appleWebApp: {
     capable: true,
-    title: "Paddler HUD",
+    title: "LoCo WX",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {

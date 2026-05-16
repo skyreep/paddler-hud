@@ -8,7 +8,7 @@ import { beaufort, cardinal, mphToKt } from "./beaufort";
 import { fetchAtmospheric } from "./open-meteo";
 import { fetchLatestObservation } from "./nws-observations";
 
-const UA = () => process.env.NWS_USER_AGENT ?? "PaddlerHUD/0.1 (contact@example.com)";
+const UA = () => process.env.NWS_USER_AGENT ?? "LoCoWX/0.1 (contact@example.com)";
 
 async function nws<T = unknown>(url: string, revalidate = 900): Promise<T> {
   const res = await fetch(url, {

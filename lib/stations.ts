@@ -34,7 +34,10 @@ export const STATIONS: Record<string, Station> = {
     lon: -80.847,
     tideStationId: "8670870",          // Fort Pulaski — local + harmonic
     observationStationId: "KSAV",       // Savannah/Hilton Head Intl (METAR, ~10 mi)
-    windStations: ["8670870"],           // Fort Pulaski — local + 6-min CO-OPS wind
+    windStations: [
+      { kind: "coops", id: "8670870" },   // Fort Pulaski — local + 6-min wind
+      { kind: "ndbc",  id: "41008"   },   // Grays Reef NMS buoy — offshore backup
+    ],
     buoyId: "41008",                    // Grays Reef
     nwsZone: "GAZ139",
     marineZone: "AMZ350",
@@ -47,9 +50,16 @@ export const STATIONS: Record<string, Station> = {
     tideStationId: "8670870",          // Fort Pulaski (nearest harmonic, ~12 mi S)
     tideStationNote: "Reference: Fort Pulaski. Hilton Head tides run ~5 min later.",
     observationStationId: "KHXD",       // Hilton Head Island Airport — on the island
-    // Try Skull Creek first (on Hilton Head); fall back to Fort Pulaski if
-    // its wind sensor is offline (subordinate stations often lack wind).
-    windStations: ["8666867", "8670870"],
+    // Try Skull Creek first (on Hilton Head); subordinate CO-OPS stations
+    // often lack wind sensors, so the next preference is NDBC 41033
+    // (Fripp Nearshore buoy, ~15 mi offshore from Hilton Head — much closer
+    // and more representative of on-water wind than Fort Pulaski 25+ mi south).
+    // Fort Pulaski stays as a regional last resort.
+    windStations: [
+      { kind: "coops", id: "8666867" },   // Skull Creek (probably no wind, but try)
+      { kind: "ndbc",  id: "41033"   },   // Fripp Nearshore buoy — most local water-based
+      { kind: "coops", id: "8670870" },   // Fort Pulaski — regional fallback
+    ],
     buoyId: "41033",
     nwsZone: "SCZ050",
     marineZone: "AMZ330",
@@ -62,8 +72,13 @@ export const STATIONS: Record<string, Station> = {
     tideStationId: "8670870",          // Fort Pulaski (nearest harmonic, ~25 mi SSW)
     tideStationNote: "Reference: Fort Pulaski. Beaufort tides run ~10 min later.",
     observationStationId: "KARW",       // Beaufort County Airport (Lady's Island)
-    // Beaufort tide station first; Fort Pulaski as backup.
-    windStations: ["8667060", "8670870"],
+    // Beaufort tide station first; NDBC 41033 (Fripp Nearshore, ~18 mi) is
+    // significantly closer than Fort Pulaski (~30 mi SSW) and water-based.
+    windStations: [
+      { kind: "coops", id: "8667060" },   // Beaufort station (probably no wind)
+      { kind: "ndbc",  id: "41033"   },   // Fripp Nearshore buoy — closest water-based
+      { kind: "coops", id: "8670870" },   // Fort Pulaski — regional fallback
+    ],
     buoyId: "41033",
     nwsZone: "SCZ049",
     marineZone: "AMZ330",
@@ -75,7 +90,10 @@ export const STATIONS: Record<string, Station> = {
     lon: -79.9333,
     tideStationId: "8665530",          // Cooper River Entrance — local + harmonic
     observationStationId: "KCHS",       // Charleston Intl (METAR)
-    windStations: ["8665530"],           // Charleston CO-OPS — local + wind
+    windStations: [
+      { kind: "coops", id: "8665530" },   // Cooper River — local + wind
+      { kind: "ndbc",  id: "41004"   },   // Edisto buoy — backup
+    ],
     buoyId: "41004",                    // Edisto
     nwsZone: "SCZ048",
     marineZone: "AMZ330",

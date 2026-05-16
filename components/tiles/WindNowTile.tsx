@@ -57,11 +57,15 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
   // Gridlines at 0, 1/3, 2/3, full of yMax
   const gridKt = [yMax, Math.round(yMax * 2 / 3), Math.round(yMax / 3), 0];
 
+  const sourceLabel = wind.source === "NDBC"
+    ? `NDBC ${wind.stationId} · ${wind.stationName}`
+    : `NOAA CO-OPS · ${wind.stationName}`;
+
   return (
     <section className="tile">
       <div className="tile-head">
         <span className="tile-title">Real-Time Wind</span>
-        <span className="tile-meta">{wind.stationName} · {ageLabel}</span>
+        <span className="tile-meta">{sourceLabel} · {ageLabel}</span>
       </div>
 
       {/* Current reading row — compass + numeric */}
@@ -163,7 +167,9 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
       <div style={{
         marginTop: 8, fontSize: 11, color: "var(--text-faint)", lineHeight: 1.4,
       }}>
-        Live wind from {wind.stationName} (NOAA CO-OPS, 6-min updates).
+        Live wind from {wind.stationName} ({wind.source === "NDBC"
+          ? `NDBC buoy ${wind.stationId}, ~10-min updates`
+          : "NOAA CO-OPS, 6-min updates"}).
         Forecast wind is in the Right Now tile.
       </div>
     </section>

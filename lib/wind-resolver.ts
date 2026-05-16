@@ -64,21 +64,27 @@ export function resolveWind(
   windCoOps: WindResponse | null,
 ): ResolvedWind {
 
-  // Priority 1: NOAA CO-OPS wind product — most accurate water-based source.
-  // Accept calm (0 kt) readings too, but only if very fresh (< 15 min) so a
-  // stuck sensor doesn't sneak through.
+  // Priority 1: live coastal wind from a CO-OPS station or NDBC buoy.
+  // Freshness threshold is source-aware: CO-OPS pushes every 6 min so a
+  // 60-min ceiling is generous, but NDBC buoys (especially the nearshore
+  // ones our chain reaches for HH/Beaufort) often only sample every
+  // 30-60 min — a 30-min cap rejected them constantly. 120 min still
+  // catches genuinely stale feeds while accepting the normal cadence.
   if (windCoOps?.latest && windCoOps.observations.length > 0) {
     const age = ageMin(windCoOps.latest.time);
     const speed = windCoOps.latest.speedKt;
     const gust = windCoOps.latest.gustKt ?? 0;
-    const fresh = age < 30;
-    // Suspect: speed exactly 0 while gust > 0 → sensor stuck
-    const suspect = speed === 0 && gust > 0;
-    // Also suspect: speed 0 AND age > 15 min (stale calm reading)
-    const calmStale = speed === 0 && age > 15;
-    if (fresh && !suspect && !calmStale) {
-      return build(speed, windCoOps.latest.gustKt, windCoOps.latest.dirDeg,
-                   `${windCoOps.stationName} · NOAA CO-OPS`, age);
+    const maxAge = windCoOps.source === "NDBC" ? 120 : 60;
+    const fresh = age < maxAge;
+    // Sensor stuck: 0 sustained wind reported alongside a non-zero gust is
+    // a broken anemometer (gust can't exceed sustained mechanically).
+    const sensorBroken = speed === 0 && gust > 0;
+    if (fresh && !sensorBroken) {
+      return build(
+        speed, windCoOps.latest.gustKt, windCoOps.latest.dirDeg,
+        `${windCoOps.stationName} · ${windCoOps.source === "NDBC" ? "NDBC" : "NOAA CO-OPS"}`,
+        age,
+      );
     }
   }
 

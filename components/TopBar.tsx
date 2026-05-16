@@ -86,7 +86,7 @@ export default function TopBar({ locationName, stationKey }: Props) {
               <path d="M2 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0 4 2 6 0" stroke="white" strokeWidth="2.2" strokeLinecap="round" opacity=".6"/>
             </svg>
           </div>
-          Paddler HUD
+          LoCo WX
         </div>
 
         <button onClick={() => setLocOpen(true)} style={pillBtn} aria-label="Change location">

@@ -34,15 +34,29 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
   const fillPath = `${linePath} L${W},${H} L0,${H} Z`;
 
   // Compute now marker only after client mount.
-  // Prefer the live observed level when present (matches the Right Now tile).
-  let nowX: number | null = null, nowY: number | null = null, nowHeight: number | null = null;
+  // Dot Y is taken from the PREDICTED height at this moment so the marker
+  // always sits exactly on the curve. The badge shows the live observed
+  // height when available (with a small "Δ" anomaly note if it differs
+  // meaningfully from prediction — that gap is the storm surge / wind
+  // setup, which is real information rather than a chart bug).
+  let nowX: number | null = null;
+  let nowY: number | null = null;
+  let nowPredictedFt: number | null = null;
+  let nowObservedFt: number | null = null;
+  let surgeAnomalyFt: number | null = null;
   if (nowTime) {
     const nowIdx = tides.predictions.findIndex(p => new Date(p.time) >= nowTime);
     const idx = nowIdx === -1 ? tides.predictions.length - 1 : nowIdx;
     nowX = xOf(idx);
-    nowHeight = liveTideFt != null ? liveTideFt : tides.predictions[idx].height;
-    nowY = yOf(nowHeight);
+    nowPredictedFt = tides.predictions[idx].height;
+    nowY = yOf(nowPredictedFt);   // ← always on the curve
+    if (liveTideFt != null) {
+      nowObservedFt = liveTideFt;
+      const diff = +(liveTideFt - nowPredictedFt).toFixed(2);
+      if (Math.abs(diff) >= 0.15) surgeAnomalyFt = diff;
+    }
   }
+  const nowDisplayFt = nowObservedFt ?? nowPredictedFt;
 
   // Convert SVG-space X to a CSS left percentage so the HTML overlay text
   // stays unstretched even though the SVG uses preserveAspectRatio="none".
@@ -94,7 +108,7 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
         </svg>
 
         {/* HTML overlay (unstretched) — only rendered after client mount */}
-        {nowLeftPct != null && nowTopPct != null && nowHeight != null && (
+        {nowLeftPct != null && nowTopPct != null && nowDisplayFt != null && (
           <>
             <div
               aria-hidden
@@ -138,7 +152,17 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
                 letterSpacing: ".3px",
               }}
             >
-              NOW · {nowHeight.toFixed(1)} ft
+              NOW · {nowDisplayFt.toFixed(1)} ft
+              {surgeAnomalyFt != null && (
+                <span style={{
+                  marginLeft: 6,
+                  color: surgeAnomalyFt > 0 ? "var(--warn)" : "var(--info)",
+                  fontWeight: 600,
+                }}
+                title={`Surge anomaly: live water level is ${Math.abs(surgeAnomalyFt).toFixed(2)} ft ${surgeAnomalyFt > 0 ? "above" : "below"} the predicted curve. Usually wind / pressure driven.`}>
+                  {surgeAnomalyFt > 0 ? "+" : ""}{surgeAnomalyFt.toFixed(1)} Δ
+                </span>
+              )}
             </div>
           </>
         )}

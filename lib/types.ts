@@ -136,12 +136,19 @@ export interface WindObservation {
   gustKt: number | null;
   dirDeg: number;
 }
+export type WindSourceKind = "coops" | "ndbc";
+/** Discriminated wind source — locations can list both NOAA CO-OPS coastal
+ *  stations and NDBC buoys in their preferred fallback order. */
+export type WindStationRef =
+  | { kind: "coops"; id: string }
+  | { kind: "ndbc"; id: string };
+
 export interface WindResponse {
   stationId: string;
   stationName: string;
   observations: WindObservation[];   // chronological, oldest first
   latest: WindObservation | null;
-  source: "NOAA CO-OPS";
+  source: "NOAA CO-OPS" | "NDBC";
   fetchedAt: string;
 }
 
@@ -289,11 +296,12 @@ export interface Station {
   /** NWS METAR/ASOS observation station ID — feeds the Right Now tile's
    *  observed values (temp, dewpoint, wind, pressure, visibility). 4-letter ICAO. */
   observationStationId: string;
-  /** Ordered list of NOAA CO-OPS station IDs to try for the real-time Wind
-   *  tile (6-min updates). First station with a working wind sensor wins.
-   *  Subordinate tide stations often lack wind, so a regional harmonic
-   *  station should always be present as the last fallback. */
-  windStations?: string[];
+  /** Ordered list of wind data sources to try for the real-time Wind tile.
+   *  Each entry is either a NOAA CO-OPS station (6-min updates, coastal) or
+   *  an NDBC buoy (10-30 min updates, offshore). First source with a working
+   *  wind sensor and fresh data wins, so locations can list their most local
+   *  options first and the regional fallback (e.g. Fort Pulaski) last. */
+  windStations?: WindStationRef[];
   buoyId: string;
   nwsZone: string;
   marineZone: string;

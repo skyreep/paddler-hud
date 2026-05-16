@@ -61,7 +61,7 @@ export async function fetchTropical(userLat?: number, userLon?: number): Promise
   let stormsRes: Response;
   try {
     stormsRes = await fetch(CURRENT_STORMS, {
-      headers: { "User-Agent": "PaddlerHUD (contact: hello@paddler-hud.app)" },
+      headers: { "User-Agent": "LoCoWX (contact: hello@example.com)" },
       next: { revalidate: 600 },
     });
   } catch (err) {

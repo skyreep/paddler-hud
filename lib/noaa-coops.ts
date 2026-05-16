@@ -4,7 +4,9 @@
 import type {
   CurrentPoint, CurrentResponse, TideExtreme, TidePoint,
   TideResponse, WaterLevelResponse, WindObservation, WindResponse,
+  WindStationRef,
 } from "./types";
+import { fetchNdbcWindHistory } from "./ndbc";
 
 const BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
 
@@ -23,7 +25,7 @@ interface CoopsParams {
 
 function buildUrl(p: CoopsParams) {
   const q = new URLSearchParams({
-    application: "PaddlerHUD",
+    application: "LoCoWX",
     format: "json",
     units: "english",
     time_zone: "lst_ldt",
@@ -224,20 +226,27 @@ export async function fetchCurrents(stationId: string): Promise<CurrentResponse>
   };
 }
 
-/** Try each station in order until one returns non-empty wind data.
- *  Subordinate tide stations frequently lack wind sensors — this lets each
- *  location declare a local-first preference with a regional fallback. */
-export async function fetchWindWithFallback(stationIds: string[], hours = 6): Promise<WindResponse> {
-  for (const id of stationIds) {
-    const r = await fetchWind(id, hours);
+/** Try each wind source (CO-OPS station or NDBC buoy) in declared order
+ *  until one returns non-empty wind data. Subordinate CO-OPS tide stations
+ *  frequently lack wind sensors, so each location lists its preferred local
+ *  options first and a regional fallback last. */
+export async function fetchWindWithFallback(
+  sources: WindStationRef[],
+  hours = 6,
+): Promise<WindResponse> {
+  for (const src of sources) {
+    const r = src.kind === "ndbc"
+      ? await fetchNdbcWindHistory(src.id, hours)
+      : await fetchWind(src.id, hours);
     if (r.observations.length > 0) return r;
   }
   // Nothing worked — return an empty shape so the UI shows the offline state.
+  const first = sources[0];
   return {
-    stationId: stationIds[0] ?? "",
-    stationName: stationIds[0] ?? "",
+    stationId: first?.id ?? "",
+    stationName: first?.id ?? "",
     observations: [], latest: null,
-    source: "NOAA CO-OPS",
+    source: first?.kind === "ndbc" ? "NDBC" : "NOAA CO-OPS",
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -253,7 +262,7 @@ export async function fetchWind(stationId: string, hours = 6): Promise<WindRespo
     units: "english",         // wind in knots, gust in knots
     time_zone: "lst_ldt",
     format: "json",
-    application: "PaddlerHUD",
+    application: "LoCoWX",
   }).toString();
   try {
     const res = await fetch(url, { next: { revalidate: 60 } });

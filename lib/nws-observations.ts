@@ -8,7 +8,7 @@
 
 import type { WeatherObservation } from "./types";
 
-const UA = () => process.env.NWS_USER_AGENT ?? "PaddlerHUD/0.1 (contact@example.com)";
+const UA = () => process.env.NWS_USER_AGENT ?? "LoCoWX/0.1 (contact@example.com)";
 
 interface NwsValue { value: number | null; unitCode?: string }
 interface ObservationProps {

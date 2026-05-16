@@ -7,8 +7,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Paddler HUD",
-    short_name: "Paddler HUD",
+    name: "LoCo WX",
+    short_name: "LoCo WX",
     description: "Marine conditions for paddlers of the Lowcountry — tides, currents, weather, radar, satellite, and more.",
     start_url: "/",
     display: "standalone",
@@ -19,8 +19,9 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       // Next.js routes app/icon.svg → /icon.svg
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      // Next.js routes app/apple-icon.tsx → /apple-icon (PNG, 180x180)
-      { src: "/apple-icon", sizes: "180x180", type: "image/png", purpose: "any" },
+      // app/apple-icon.tsx now returns SVG (was a Vercel-OG PNG); iOS 14+
+      // handles SVG home-screen icons fine, older iOS falls back to /icon.svg.
+      { src: "/apple-icon", sizes: "180x180", type: "image/svg+xml", purpose: "any" },
     ],
   };
 }
