@@ -22,6 +22,7 @@ import { fetchRiverGauge } from "@/lib/usgs";
 import { computeAstro } from "@/lib/astro";
 import { fetchAirQuality } from "@/lib/airnow";
 import { fetchTropical } from "@/lib/nhc";
+import { resolveWind } from "@/lib/wind-resolver";
 import { getStation, DEFAULT_STATION_KEY } from "@/lib/stations";
 
 // Default saved river gauges for first-load. Up to 10 USGS sites.
@@ -72,6 +73,25 @@ export default async function Home({ searchParams }: { searchParams: { station?:
   const validGauges = gauges.filter(Boolean) as NonNullable<typeof gauges[number]>[];
   const fetchedAt = new Date().toISOString();
 
+  // Resolve "best available" real-time wind from the multi-source chain
+  // (CO-OPS → METAR → NWS forecast) and override the wind fields in
+  // weather.now so the Right Now tile shows hyper-local, never-zero data.
+  let windSource: string | undefined;
+  if (weather) {
+    const resolved = resolveWind(weather.now, weather.observation ?? null, wind);
+    weather.now = {
+      ...weather.now,
+      windSpeedKt:     resolved.speedKt,
+      windSpeedMph:    resolved.speedMph,
+      windGustKt:      resolved.gustKt,
+      windDirDeg:      resolved.dirDeg,
+      windDirCardinal: resolved.dirCardinal,
+      beaufortForce:   resolved.beaufortForce,
+      beaufortName:    resolved.beaufortName,
+    };
+    windSource = resolved.source;
+  }
+
   return (
     <>
       <TopBar locationName={station.displayName} stationKey={stationKey} />
@@ -93,6 +113,7 @@ export default async function Home({ searchParams }: { searchParams: { station?:
               liveTideFt={water?.observedHeight ?? null}
               attribution={weather.attribution}
               observation={weather.observation}
+              windSource={windSource}
             />
           )}
           {wind && <WindNowTile wind={wind} />}

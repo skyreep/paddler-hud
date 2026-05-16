@@ -8,13 +8,15 @@ interface Props {
   liveTideFt?: number | null;
   attribution?: NwsAttribution;
   observation?: WeatherObservation | null;
+  /** Resolved wind data source ("Fort Pulaski · NOAA CO-OPS · 4 min ago", etc.) */
+  windSource?: string;
 }
 
 function minutesAgo(iso: string): number {
   return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
 }
 
-export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution, observation }: Props) {
+export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution, observation, windSource }: Props) {
   const updated = fmtTime(fetchedAt);
   // When METAR observation is feeding the tile, lead with "Observed X min ago"
   // so users know these are real measurements, not forecast for the next hour.
@@ -58,6 +60,14 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
             <span style={pill}>Force {weather.beaufortForce} — {weather.beaufortName}</span>
             {weather.windGustKt && (
               <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 6 }}>Gusts to {Math.round(weather.windGustKt)} kt</div>
+            )}
+            {windSource && (
+              <div style={{
+                fontSize: 10, color: "var(--text-faint)", marginTop: 6,
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              }} title="Wind data source — priority chain: NOAA CO-OPS → METAR → NWS forecast">
+                {windSource}
+              </div>
             )}
           </div>
         </div>
