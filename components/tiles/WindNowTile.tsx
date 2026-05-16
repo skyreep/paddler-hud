@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import type { WindResponse } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 import { beaufort } from "@/lib/beaufort";
@@ -9,9 +10,6 @@ function cardinalFromDeg(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-function minutesAgo(iso: string): number {
-  return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
-}
 
 /** Real-time wind tile fed by a NOAA CO-OPS coastal station. Updates every
  *  6 minutes — more frequent than METAR (which is every 5-15 min) and sourced
@@ -19,6 +17,19 @@ function minutesAgo(iso: string): number {
  *  gust chart so paddlers can see whether wind is building or easing.
  */
 export default function WindNowTile({ wind }: { wind: WindResponse }) {
+  // Track "now" client-side. Computing minutesAgo() during render would
+  // execute once on the server (during RSC pre-render) and again on the
+  // client at hydration with a different Date.now(), producing different
+  // text content and tripping React's hydration check. Production builds
+  // surface that as "Application Error: a client-side exception" instead
+  // of the dev-mode warning, which is what iPhone users were seeing.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!wind.latest || wind.observations.length === 0) {
     return (
       <section className="tile">
@@ -35,8 +46,11 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
 
   const cur = wind.latest;
   const bf = beaufort(cur.speedKt);
-  const age = minutesAgo(cur.timestamp ?? cur.time);
-  const ageLabel = age === 0 ? "Just now" : age === 1 ? "1 min ago" : `${age} min ago`;
+  // ageLabel is null until client mount, then ticks every minute.
+  const ageLabel = nowMs == null ? null : (() => {
+    const age = Math.max(0, Math.round((nowMs - Date.parse(cur.time)) / 60_000));
+    return age === 0 ? "Just now" : age === 1 ? "1 min ago" : `${age} min ago`;
+  })();
 
   // 6-hour history sparkline. Two lines: sustained (accent) + gusts (warn).
   const W = 420, H = 90, padL = 6, padR = 6, padT = 8, padB = 22;
@@ -65,7 +79,7 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
     <section className="tile">
       <div className="tile-head">
         <span className="tile-title">Real-Time Wind</span>
-        <span className="tile-meta">{sourceLabel} · {ageLabel}</span>
+        <span className="tile-meta">{sourceLabel}{ageLabel ? ` · ${ageLabel}` : ""}</span>
       </div>
 
       {/* Current reading row — compass + numeric */}
@@ -124,44 +138,58 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
             <span style={{ marginLeft: 10, color: "var(--warn)" }}>━ Gusts</span>
           </span>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-             style={{ width: "100%", height: 90, display: "block" }} aria-hidden>
-          {/* Gridlines + Y labels */}
-          {gridKt.map((kt, i) => (
-            <g key={i}>
-              <line x1={padL} y1={yOf(kt)} x2={W - padR} y2={yOf(kt)}
+        {/* The chart container: SVG renders only paths/gridlines (those stretch
+            cleanly with preserveAspectRatio="none"). All text labels are HTML
+            overlays positioned by percent so the font stays the same size on
+            every viewport instead of being horizontally stretched into a smear
+            on wide screens. */}
+        <div style={{ position: "relative", height: 90 }}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+               style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
+            {gridKt.map((kt, i) => (
+              <line key={i}
+                    x1={padL} y1={yOf(kt)} x2={W - padR} y2={yOf(kt)}
                     stroke="var(--border)" strokeDasharray="2,3" />
-              <text x={W - padR - 2} y={yOf(kt) - 2}
-                    textAnchor="end" fontSize="8"
-                    fontFamily="JetBrains Mono, ui-monospace, monospace"
-                    fill="var(--text-faint)">
-                {kt} kt
-              </text>
-            </g>
+            ))}
+            <path d={gustPath} fill="none" stroke="var(--warn)"
+                  strokeWidth="1.6" strokeLinecap="round"
+                  strokeDasharray="3,2" opacity="0.85"
+                  vectorEffect="non-scaling-stroke" />
+            <path d={speedPath} fill="none" stroke="var(--accent)"
+                  strokeWidth="2.2" strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke" />
+          </svg>
+          {/* Y-axis kt labels — one per gridline, anchored at the chart's
+              right edge, vertically aligned via percent. */}
+          {gridKt.map((kt, i) => (
+            <span key={i} style={{
+              position: "absolute",
+              right: 4,
+              top: `${(yOf(kt) / H) * 100}%`,
+              transform: "translateY(-100%)",
+              fontSize: 9, fontWeight: 600,
+              color: "var(--text-faint)",
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              pointerEvents: "none",
+              background: "var(--bg-elev-2)",
+              padding: "0 3px",
+              lineHeight: 1.2,
+            }}>{kt} kt</span>
           ))}
-          {/* Gusts (warn color, dotted feel via heavier stroke) */}
-          <path d={gustPath} fill="none" stroke="var(--warn)"
-                strokeWidth="1.6" strokeLinecap="round"
-                strokeDasharray="3,2" opacity="0.85"
-                vectorEffect="non-scaling-stroke" />
-          {/* Sustained wind (accent, solid) */}
-          <path d={speedPath} fill="none" stroke="var(--accent)"
-                strokeWidth="2.2" strokeLinecap="round"
-                vectorEffect="non-scaling-stroke" />
-          {/* X-axis time labels at start / middle / end */}
-          <g fontSize="9" fontFamily="JetBrains Mono, ui-monospace, monospace"
-             fill="var(--text-faint)">
-            <text x={padL} y={H - 6} textAnchor="start">
-              {fmtTime(obs[0].time)}
-            </text>
-            <text x={W / 2} y={H - 6} textAnchor="middle">
-              {fmtTime(obs[Math.floor(obs.length / 2)].time)}
-            </text>
-            <text x={W - padR} y={H - 6} textAnchor="end">
-              {fmtTime(obs[obs.length - 1].time)}
-            </text>
-          </g>
-        </svg>
+          {/* X-axis time labels — start / middle / end of the window. */}
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 2,
+            display: "flex", justifyContent: "space-between",
+            fontSize: 10, color: "var(--text-faint)",
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            pointerEvents: "none",
+            padding: "0 4px",
+          }}>
+            <span>{fmtTime(obs[0].time)}</span>
+            <span>{fmtTime(obs[Math.floor(obs.length / 2)].time)}</span>
+            <span>{fmtTime(obs[obs.length - 1].time)}</span>
+          </div>
+        </div>
       </div>
 
       <div style={{
