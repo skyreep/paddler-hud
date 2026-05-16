@@ -97,13 +97,51 @@ export interface NwsAttribution {
   gridX: number;
   gridY: number;
   relativeLocation?: string; // "Tybee Island, GA"
+  observationStationId?: string; // e.g. "KSAV" — METAR station feeding Right Now
 }
+
+/** Real-time observed conditions from a METAR/ASOS station. */
+export interface WeatherObservation {
+  stationId: string;
+  timestamp: string;            // ISO UTC, when the sample was recorded
+  tempF: number | null;
+  dewPointF: number | null;
+  humidity: number | null;
+  windSpeedKt: number | null;
+  windSpeedMph: number | null;
+  windDirDeg: number | null;
+  windGustKt: number | null;
+  pressureInHg: number | null;
+  visibilityMi: number | null;
+  precipLastHourIn: number | null;
+  textDescription: string | null;
+  heatIndexF: number | null;
+  windChillF: number | null;
+}
+
 export interface WeatherResponse {
   now: WeatherNow;
-  hourly: WeatherHour[];     // next 24 hr
-  daily: WeatherDay[];       // 7 days
+  hourly: WeatherHour[];        // next 24 hr
+  daily: WeatherDay[];          // 7 days
+  observation?: WeatherObservation | null; // most recent METAR for the area
   attribution: NwsAttribution;
   source: "NWS";
+  fetchedAt: string;
+}
+
+/** Real-time wind series from a NOAA CO-OPS station (every 6 min). */
+export interface WindObservation {
+  time: string;     // ISO local
+  speedKt: number;
+  gustKt: number | null;
+  dirDeg: number;
+}
+export interface WindResponse {
+  stationId: string;
+  stationName: string;
+  observations: WindObservation[];   // chronological, oldest first
+  latest: WindObservation | null;
+  source: "NOAA CO-OPS";
   fetchedAt: string;
 }
 
@@ -248,6 +286,12 @@ export interface Station {
    *  this location (e.g. "Reference: Fort Pulaski. Hilton Head tides run ~5 min later."). */
   tideStationNote?: string;
   currentStationId?: string;
+  /** NWS METAR/ASOS observation station ID — feeds the Right Now tile's
+   *  observed values (temp, dewpoint, wind, pressure, visibility). 4-letter ICAO. */
+  observationStationId: string;
+  /** NOAA CO-OPS station ID with real-time wind product (6-min updates).
+   *  Used by the dedicated Wind tile. Falls back to METAR if missing. */
+  windStationId?: string;
   buoyId: string;
   nwsZone: string;
   marineZone: string;

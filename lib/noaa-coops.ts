@@ -3,7 +3,7 @@
 
 import type {
   CurrentPoint, CurrentResponse, TideExtreme, TidePoint,
-  TideResponse, WaterLevelResponse,
+  TideResponse, WaterLevelResponse, WindObservation, WindResponse,
 } from "./types";
 
 const BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
@@ -222,6 +222,63 @@ export async function fetchCurrents(stationId: string): Promise<CurrentResponse>
     source: "NOAA CO-OPS",
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/** Real-time wind from a CO-OPS station — speed, gust, direction every 6 min.
+ *  Returns the last `hours` of observations (default 6) plus a `latest` shortcut. */
+export async function fetchWind(stationId: string, hours = 6): Promise<WindResponse> {
+  // CO-OPS supports range=N for last N hours (1-72).
+  const url = `${BASE}?` + new URLSearchParams({
+    product: "wind",
+    station: stationId,
+    range: String(hours),
+    units: "english",         // wind in knots, gust in knots
+    time_zone: "lst_ldt",
+    format: "json",
+    application: "PaddlerHUD",
+  }).toString();
+  try {
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (!res.ok) {
+      return {
+        stationId, stationName: stationId,
+        observations: [], latest: null,
+        source: "NOAA CO-OPS", fetchedAt: new Date().toISOString(),
+      };
+    }
+    const json = (await res.json()) as {
+      data?: { t: string; s: string; g: string; d: string }[];
+      metadata?: { name?: string };
+      error?: { message: string };
+    };
+    if (json.error || !json.data?.length) {
+      return {
+        stationId, stationName: json.metadata?.name ?? stationId,
+        observations: [], latest: null,
+        source: "NOAA CO-OPS", fetchedAt: new Date().toISOString(),
+      };
+    }
+    const observations: WindObservation[] = json.data.map(d => ({
+      time: coopsTimeToISO(d.t),
+      speedKt: Number(d.s),
+      gustKt: d.g === "" ? null : Number(d.g),
+      dirDeg: Number(d.d),
+    }));
+    return {
+      stationId,
+      stationName: json.metadata?.name ?? stationId,
+      observations,
+      latest: observations[observations.length - 1] ?? null,
+      source: "NOAA CO-OPS",
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch {
+    return {
+      stationId, stationName: stationId,
+      observations: [], latest: null,
+      source: "NOAA CO-OPS", fetchedAt: new Date().toISOString(),
+    };
+  }
 }
 
 /** Live water level and predicted level for surge anomaly. */

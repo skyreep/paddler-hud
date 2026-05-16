@@ -1,6 +1,7 @@
 import TopBar from "@/components/TopBar";
 import AdvisoryBanner from "@/components/tiles/AdvisoryBanner";
 import RightNow from "@/components/tiles/RightNow";
+import WindNowTile from "@/components/tiles/WindNowTile";
 import MapTile from "@/components/tiles/MapTile";
 import RadarTile from "@/components/tiles/RadarTile";
 import TideTile from "@/components/tiles/TideTile";
@@ -14,7 +15,7 @@ import MarineTile from "@/components/tiles/MarineTile";
 import RiversTile from "@/components/tiles/RiversTile";
 import TropicalTile from "@/components/tiles/TropicalTile";
 
-import { fetchTides, fetchWaterLevel, fetchCurrents, deriveCurrentsFromTide } from "@/lib/noaa-coops";
+import { fetchTides, fetchWaterLevel, fetchCurrents, deriveCurrentsFromTide, fetchWind } from "@/lib/noaa-coops";
 import { fetchWeather, fetchAlerts } from "@/lib/nws";
 import { fetchMarine } from "@/lib/open-meteo";
 import { fetchRiverGauge } from "@/lib/usgs";
@@ -42,15 +43,16 @@ export default async function Home({ searchParams }: { searchParams: { station?:
 
   const safe = <T,>(p: Promise<T>) => p.catch((e) => { console.error("hud fetch:", e); return null; });
 
-  const [tides, noaaCurrents, weather, alerts, buoy, water, airQuality, tropical, ...gauges] = await Promise.all([
+  const [tides, noaaCurrents, weather, alerts, buoy, water, airQuality, tropical, wind, ...gauges] = await Promise.all([
     safe(fetchTides(station.tideStationId)),
     station.currentStationId ? safe(fetchCurrents(station.currentStationId)) : Promise.resolve(null),
-    safe(fetchWeather(station.lat, station.lon)),
+    safe(fetchWeather(station.lat, station.lon, station.observationStationId)),
     safe(fetchAlerts([station.nwsZone, station.marineZone])),
     safe(fetchMarine(station.lat, station.lon)),
     safe(fetchWaterLevel(station.tideStationId)),
     safe(fetchAirQuality(station.lat, station.lon)),
     safe(fetchTropical(station.lat, station.lon)),
+    station.windStationId ? safe(fetchWind(station.windStationId, 6)) : Promise.resolve(null),
     ...gaugeIds.map((id) => safe(fetchRiverGauge(id.trim()))),
   ]);
 
@@ -90,8 +92,10 @@ export default async function Home({ searchParams }: { searchParams: { station?:
               airQuality={airQuality}
               liveTideFt={water?.observedHeight ?? null}
               attribution={weather.attribution}
+              observation={weather.observation}
             />
           )}
+          {wind && <WindNowTile wind={wind} />}
           <MapTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
           {tides && <TideTile tides={tides} stationNote={station.tideStationNote} liveTideFt={water?.observedHeight ?? null} />}
           {currents && <CurrentTile currents={currents} />}

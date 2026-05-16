@@ -6,6 +6,7 @@ import type {
 } from "./types";
 import { beaufort, cardinal, mphToKt } from "./beaufort";
 import { fetchAtmospheric } from "./open-meteo";
+import { fetchLatestObservation } from "./nws-observations";
 
 const UA = () => process.env.NWS_USER_AGENT ?? "PaddlerHUD/0.1 (contact@example.com)";
 
@@ -130,19 +131,24 @@ function dirToDeg(card: string): number {
 }
 function cToF(c: number | null | undefined) { return c == null ? undefined : (c * 9/5) + 32; }
 
-/** Get a normalized weather payload for a lat/lon: now, hourly 24h, daily 7d. */
-export async function fetchWeather(lat: number, lon: number): Promise<WeatherResponse> {
+/** Get a normalized weather payload for a lat/lon: now, hourly 24h, daily 7d.
+ *  When `observationStationId` is provided (a METAR/ASOS station like "KSAV"),
+ *  real-time observed values from that instrument take precedence over the
+ *  forecast in the `now` block. */
+export async function fetchWeather(
+  lat: number,
+  lon: number,
+  observationStationId?: string,
+): Promise<WeatherResponse> {
   const point = await nws<PointResp>(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, 86400);
-  const [forecast, hourly, gridRaw, atmos] = await Promise.all([
+  const [forecast, hourly, gridRaw, atmos, observation] = await Promise.all([
     nws<ForecastResp>(point.properties.forecast, 1800),
     nws<ForecastResp>(point.properties.forecastHourly, 900),
-    // Gridpoint endpoint carries quantitative precip, sky cover, pressure, visibility.
-    // Charleston (and many other CWAs) inconsistently populates the latter three,
-    // so we always pull a fallback from Open-Meteo and prefer the gridpoint
-    // value only when it's actually present.
     nws<GridpointResp>(point.properties.forecastGridData, 1800).catch(() => null),
-    // UV + visibility + pressure from Open-Meteo (no key, globally available).
     fetchAtmospheric(lat, lon),
+    // Real-time observed conditions from the nearest METAR station — what an
+    // instrument actually measured 5-15 minutes ago, not what a model predicts.
+    observationStationId ? fetchLatestObservation(observationStationId) : Promise.resolve(null),
   ]);
 
   const h = hourly.properties.periods[0];
@@ -155,14 +161,14 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
   const sixHrIso = new Date(Date.now() + 6 * 3600_000).toISOString();
   const grid = gridRaw?.properties;
 
-  // Prefer Open-Meteo for UV / visibility / pressure (consistently populated
-  // worldwide); fall back to NWS gridpoint values only if Open-Meteo is null.
-  const gridUv       = grid?.uvIndex ? gridValueAt(grid.uvIndex, nowIso) : null;
-  const gridPressurePa = grid?.pressure ? gridValueAt(grid.pressure, nowIso) : null;
-  const gridVisM     = grid?.visibility ? gridValueAt(grid.visibility, nowIso) : null;
-  const uvNow         = atmos.uvIndex      ?? gridUv;
-  const pressureInHg  = atmos.pressureInHg ?? (gridPressurePa != null ? +(gridPressurePa * 0.0002953).toFixed(2) : null);
-  const visibilityMi  = atmos.visibilityMi ?? (gridVisM != null ? +(gridVisM / 1609.34).toFixed(1) : null);
+  // Open-Meteo only for UV / visibility / pressure. The previous NWS-gridpoint
+  // fallback caused source-mixing between deployments (one would get
+  // Open-Meteo, the other would silently fall back to NWS gridpoint at the
+  // hour boundary or on a transient null), producing the "Vercel says X but
+  // localhost says Y" discrepancy. Using one source keeps them in sync.
+  const uvNow         = atmos.uvIndex;
+  const pressureInHg  = atmos.pressureInHg;
+  const visibilityMi  = atmos.visibilityMi;
   const precipNext6mm = grid?.quantitativePrecipitation
     ? gridSumWindow(grid.quantitativePrecipitation, nowIso, sixHrIso) : null;
   const cloudNow      = grid?.skyCover ? gridValueAt(grid.skyCover, nowIso) : null;
@@ -171,7 +177,8 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
   // a significant gust is forecast). Don't fall back to the sustained-wind
   // upper bound — that's a sustained range, not a peak gust.
   const gustNowMph = parseGustMph(h?.windGust);
-  const now: WeatherNow = {
+  // Forecast values first (used as fallbacks if the METAR station's value is null).
+  const forecastNow: WeatherNow = {
     tempF: h?.temperature ?? 0,
     feelsLikeF: h?.temperature ?? 0,
     shortForecast: h?.shortForecast ?? "",
@@ -191,6 +198,31 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
     pressureInHg: pressureInHg ?? undefined,
     visibilityMi: visibilityMi ?? undefined,
   };
+
+  // Merge in real-time METAR observations — they win for every field they
+  // populate, because actual measurements beat model predictions for "now."
+  // Forecast still wins for things METAR doesn't measure (precip chance, UV).
+  let now: WeatherNow = forecastNow;
+  if (observation) {
+    const obsBf = observation.windSpeedKt != null ? beaufort(observation.windSpeedKt) : null;
+    now = {
+      ...forecastNow,
+      tempF:          observation.tempF        ?? forecastNow.tempF,
+      feelsLikeF:     observation.heatIndexF   ?? observation.windChillF ?? observation.tempF ?? forecastNow.feelsLikeF,
+      shortForecast:  observation.textDescription ?? forecastNow.shortForecast,
+      windSpeedKt:    observation.windSpeedKt  ?? forecastNow.windSpeedKt,
+      windSpeedMph:   observation.windSpeedMph ?? forecastNow.windSpeedMph,
+      windGustKt:     observation.windGustKt   ?? forecastNow.windGustKt,
+      windDirDeg:     observation.windDirDeg   ?? forecastNow.windDirDeg,
+      windDirCardinal: observation.windDirDeg != null ? cardinal(observation.windDirDeg) : forecastNow.windDirCardinal,
+      beaufortForce:  obsBf?.force ?? forecastNow.beaufortForce,
+      beaufortName:   obsBf?.name  ?? forecastNow.beaufortName,
+      humidity:       observation.humidity     ?? forecastNow.humidity,
+      dewPointF:      observation.dewPointF    ?? forecastNow.dewPointF,
+      pressureInHg:   observation.pressureInHg ?? forecastNow.pressureInHg,
+      visibilityMi:   observation.visibilityMi ?? forecastNow.visibilityMi,
+    };
+  }
 
   const hourlyOut: WeatherHour[] = hourly.properties.periods.slice(0, 24).map(p => {
     const w = parseWindMph(p.windSpeed);
@@ -285,10 +317,12 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
     relativeLocation: point.properties.relativeLocation?.properties?.city
       ? `${point.properties.relativeLocation.properties.city}, ${point.properties.relativeLocation.properties.state ?? ""}`.trim().replace(/,\s*$/, "")
       : undefined,
+    observationStationId,
   };
 
   return {
     now, hourly: hourlyOut, daily,
+    observation,
     attribution,
     source: "NWS",
     fetchedAt: new Date().toISOString(),

@@ -1,4 +1,4 @@
-import type { WeatherNow, AirQualityResponse, NwsAttribution } from "@/lib/types";
+import type { WeatherNow, AirQualityResponse, NwsAttribution, WeatherObservation } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 
 interface Props {
@@ -7,16 +7,22 @@ interface Props {
   airQuality?: AirQualityResponse | null;
   liveTideFt?: number | null;
   attribution?: NwsAttribution;
+  observation?: WeatherObservation | null;
 }
 
-export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution }: Props) {
+function minutesAgo(iso: string): number {
+  return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+}
+
+export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution, observation }: Props) {
   const updated = fmtTime(fetchedAt);
-  // Source label: prefer the local sub-area NWS resolves for this lat/lon
-  // (e.g. "Tybee Island, GA") over the broader forecast-office name.
-  // The office itself is shown after the dot for transparency.
-  const src = attribution
-    ? `${attribution.relativeLocation ?? attribution.officeName ?? "NWS"} · NWS ${attribution.office}`
-    : "NWS";
+  // When METAR observation is feeding the tile, lead with "Observed X min ago"
+  // so users know these are real measurements, not forecast for the next hour.
+  const src = observation
+    ? `Observed ${observation.stationId} · ${minutesAgo(observation.timestamp)} min ago`
+    : attribution
+      ? `${attribution.relativeLocation ?? attribution.officeName ?? "NWS"} · NWS ${attribution.office}`
+      : "NWS";
 
   return (
     <section className="tile">
