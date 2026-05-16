@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { STATIONS, DEFAULT_STATION_KEY } from "@/lib/stations";
 
@@ -9,9 +9,31 @@ interface Props {
   activeKey: string;
 }
 
+function urlForStation(key: string, baseParams: URLSearchParams): string {
+  const params = new URLSearchParams(baseParams);
+  if (key === DEFAULT_STATION_KEY) params.delete("station");
+  else params.set("station", key);
+  const qs = params.toString();
+  return qs ? `/?${qs}` : "/";
+}
+
 export default function LocationPicker({ open, onClose, activeKey }: Props) {
   const router = useRouter();
   const search = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+  // Prefetch every location the moment the picker opens, so a tap fires a
+  // cached navigation instead of a cold render. This is the single biggest
+  // perceived-responsiveness win: by the time the user picks, the destination
+  // is usually already rendered.
+  useEffect(() => {
+    if (!open) return;
+    const base = new URLSearchParams(search?.toString() ?? "");
+    for (const key of Object.keys(STATIONS)) {
+      router.prefetch(urlForStation(key, base));
+    }
+  }, [open, router, search]);
 
   // Close on Escape
   useEffect(() => {
@@ -30,16 +52,43 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
   }, [open]);
 
   function selectStation(key: string) {
-    // Preserve other URL params (gauges, etc.); update station.
-    const params = new URLSearchParams(search?.toString() ?? "");
-    if (key === DEFAULT_STATION_KEY) params.delete("station");
-    else params.set("station", key);
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : "/");
+    if (key === activeKey) { onClose(); return; }
+    const url = urlForStation(key, new URLSearchParams(search?.toString() ?? ""));
+    setPendingKey(key);
+    // Wrap in a transition so React knows this is non-urgent state work —
+    // gives us isPending for a visual loading indicator and keeps the click
+    // responsive instead of blocking the UI thread during navigation.
+    startTransition(() => {
+      router.push(url);
+    });
+    // Close the sheet immediately for snappy feel — even though page data
+    // is still streaming in, the user sees the picker dismiss.
     onClose();
   }
 
-  if (!open) return null;
+  if (!open && !isPending) return null;
+  if (!open) {
+    // Picker closed but navigation still in flight — render a thin progress
+    // bar at the very top so the user knows something is happening.
+    return (
+      <div
+        aria-live="polite"
+        style={{
+          position: "fixed", top: 0, left: 0, right: 0, height: 3, zIndex: 10001,
+          background: "var(--accent)",
+          opacity: 0.85,
+          animation: "phud-pending-bar 1.2s ease-in-out infinite",
+        }}
+      >
+        <style>{`@keyframes phud-pending-bar {
+          0% { transform: scaleX(0); transform-origin: left; }
+          50% { transform: scaleX(1); transform-origin: left; }
+          51% { transform: scaleX(1); transform-origin: right; }
+          100% { transform: scaleX(0); transform-origin: right; }
+        }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -92,19 +141,22 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
 
         {Object.values(STATIONS).map((s) => {
           const selected = s.key === activeKey;
+          const loading = pendingKey === s.key && isPending;
           return (
             <button
               key={s.key}
               onClick={() => selectStation(s.key)}
+              disabled={isPending}
               style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: 12, marginBottom: 6, width: "100%",
-                background: selected ? "var(--accent-soft)" : "var(--bg-elev-2)",
+                background: selected || loading ? "var(--accent-soft)" : "var(--bg-elev-2)",
                 borderRadius: 10,
-                border: `1px solid ${selected ? "var(--accent)" : "var(--border-soft)"}`,
-                textAlign: "left", cursor: "pointer",
+                border: `1px solid ${selected || loading ? "var(--accent)" : "var(--border-soft)"}`,
+                textAlign: "left", cursor: isPending ? "wait" : "pointer",
                 color: "var(--text)",
                 fontFamily: "inherit", fontSize: 14,
+                opacity: isPending && !loading ? 0.5 : 1,
               }}
             >
               <div style={{

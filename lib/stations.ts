@@ -34,7 +34,7 @@ export const STATIONS: Record<string, Station> = {
     lon: -80.847,
     tideStationId: "8670870",          // Fort Pulaski — local + harmonic
     observationStationId: "KSAV",       // Savannah/Hilton Head Intl (METAR, ~10 mi)
-    windStationId: "8670870",           // Fort Pulaski has CO-OPS wind product, 6-min updates
+    windStations: ["8670870"],           // Fort Pulaski — local + 6-min CO-OPS wind
     buoyId: "41008",                    // Grays Reef
     nwsZone: "GAZ139",
     marineZone: "AMZ350",
@@ -47,7 +47,9 @@ export const STATIONS: Record<string, Station> = {
     tideStationId: "8670870",          // Fort Pulaski (nearest harmonic, ~12 mi S)
     tideStationNote: "Reference: Fort Pulaski. Hilton Head tides run ~5 min later.",
     observationStationId: "KHXD",       // Hilton Head Island Airport — on the island
-    windStationId: "8670870",           // Fort Pulaski wind, closest CO-OPS w/ wind
+    // Try Skull Creek first (on Hilton Head); fall back to Fort Pulaski if
+    // its wind sensor is offline (subordinate stations often lack wind).
+    windStations: ["8666867", "8670870"],
     buoyId: "41033",
     nwsZone: "SCZ050",
     marineZone: "AMZ330",
@@ -60,7 +62,8 @@ export const STATIONS: Record<string, Station> = {
     tideStationId: "8670870",          // Fort Pulaski (nearest harmonic, ~25 mi SSW)
     tideStationNote: "Reference: Fort Pulaski. Beaufort tides run ~10 min later.",
     observationStationId: "KARW",       // Beaufort County Airport (Lady's Island)
-    windStationId: "8670870",
+    // Beaufort tide station first; Fort Pulaski as backup.
+    windStations: ["8667060", "8670870"],
     buoyId: "41033",
     nwsZone: "SCZ049",
     marineZone: "AMZ330",
@@ -72,7 +75,7 @@ export const STATIONS: Record<string, Station> = {
     lon: -79.9333,
     tideStationId: "8665530",          // Cooper River Entrance — local + harmonic
     observationStationId: "KCHS",       // Charleston Intl (METAR)
-    windStationId: "8665530",           // Charleston CO-OPS station has wind
+    windStations: ["8665530"],           // Charleston CO-OPS — local + wind
     buoyId: "41004",                    // Edisto
     nwsZone: "SCZ048",
     marineZone: "AMZ330",

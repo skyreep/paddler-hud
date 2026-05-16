@@ -289,9 +289,11 @@ export interface Station {
   /** NWS METAR/ASOS observation station ID — feeds the Right Now tile's
    *  observed values (temp, dewpoint, wind, pressure, visibility). 4-letter ICAO. */
   observationStationId: string;
-  /** NOAA CO-OPS station ID with real-time wind product (6-min updates).
-   *  Used by the dedicated Wind tile. Falls back to METAR if missing. */
-  windStationId?: string;
+  /** Ordered list of NOAA CO-OPS station IDs to try for the real-time Wind
+   *  tile (6-min updates). First station with a working wind sensor wins.
+   *  Subordinate tide stations often lack wind, so a regional harmonic
+   *  station should always be present as the last fallback. */
+  windStations?: string[];
   buoyId: string;
   nwsZone: string;
   marineZone: string;

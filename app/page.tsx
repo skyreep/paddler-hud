@@ -15,7 +15,7 @@ import MarineTile from "@/components/tiles/MarineTile";
 import RiversTile from "@/components/tiles/RiversTile";
 import TropicalTile from "@/components/tiles/TropicalTile";
 
-import { fetchTides, fetchWaterLevel, fetchCurrents, deriveCurrentsFromTide, fetchWind } from "@/lib/noaa-coops";
+import { fetchTides, fetchWaterLevel, fetchCurrents, deriveCurrentsFromTide, fetchWindWithFallback } from "@/lib/noaa-coops";
 import { fetchWeather, fetchAlerts } from "@/lib/nws";
 import { fetchMarine } from "@/lib/open-meteo";
 import { fetchRiverGauge } from "@/lib/usgs";
@@ -52,7 +52,7 @@ export default async function Home({ searchParams }: { searchParams: { station?:
     safe(fetchWaterLevel(station.tideStationId)),
     safe(fetchAirQuality(station.lat, station.lon)),
     safe(fetchTropical(station.lat, station.lon)),
-    station.windStationId ? safe(fetchWind(station.windStationId, 6)) : Promise.resolve(null),
+    station.windStations?.length ? safe(fetchWindWithFallback(station.windStations, 6)) : Promise.resolve(null),
     ...gaugeIds.map((id) => safe(fetchRiverGauge(id.trim()))),
   ]);
 

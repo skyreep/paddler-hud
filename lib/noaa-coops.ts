@@ -224,6 +224,24 @@ export async function fetchCurrents(stationId: string): Promise<CurrentResponse>
   };
 }
 
+/** Try each station in order until one returns non-empty wind data.
+ *  Subordinate tide stations frequently lack wind sensors — this lets each
+ *  location declare a local-first preference with a regional fallback. */
+export async function fetchWindWithFallback(stationIds: string[], hours = 6): Promise<WindResponse> {
+  for (const id of stationIds) {
+    const r = await fetchWind(id, hours);
+    if (r.observations.length > 0) return r;
+  }
+  // Nothing worked — return an empty shape so the UI shows the offline state.
+  return {
+    stationId: stationIds[0] ?? "",
+    stationName: stationIds[0] ?? "",
+    observations: [], latest: null,
+    source: "NOAA CO-OPS",
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 /** Real-time wind from a CO-OPS station — speed, gust, direction every 6 min.
  *  Returns the last `hours` of observations (default 6) plus a `latest` shortcut. */
 export async function fetchWind(stationId: string, hours = 6): Promise<WindResponse> {

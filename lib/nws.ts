@@ -109,6 +109,15 @@ interface ForecastPeriod {
 
 function parseWindMph(s?: string): { min: number; max: number; mid: number } {
   if (!s) return { min: 0, max: 0, mid: 0 };
+  const lower = s.toLowerCase();
+  // NWS uses descriptive phrasing for low wind that has no digits — preserve
+  // a reasonable non-zero value so the UI doesn't claim "0 mph" when there's
+  // actually a 3-5 mph breeze.
+  if (lower.includes("calm")) return { min: 0, max: 2, mid: 1 };
+  if (lower.includes("light and variable") || lower.includes("light variable")) {
+    return { min: 1, max: 6, mid: 4 };
+  }
+  if (lower.includes("light")) return { min: 2, max: 8, mid: 5 };
   const m = s.match(/(\d+)(?:\s+to\s+(\d+))?/);
   if (!m) return { min: 0, max: 0, mid: 0 };
   const min = Number(m[1]); const max = m[2] ? Number(m[2]) : min;
@@ -201,26 +210,46 @@ export async function fetchWeather(
 
   // Merge in real-time METAR observations — they win for every field they
   // populate, because actual measurements beat model predictions for "now."
-  // Forecast still wins for things METAR doesn't measure (precip chance, UV).
+  // BUT: trust-check wind specifically. METAR stations periodically report
+  // 0 mph when:
+  //   - the sensor is iced/stuck
+  //   - the cup anemometer is below threshold
+  //   - the latest sample is stale (station offline for hours)
+  // For a coastal paddling app, a 0-mph reading is suspect — if the forecast
+  // model says there's wind, prefer the forecast.
   let now: WeatherNow = forecastNow;
   if (observation) {
-    const obsBf = observation.windSpeedKt != null ? beaufort(observation.windSpeedKt) : null;
+    const obsAgeMin = (Date.now() - Date.parse(observation.timestamp)) / 60000;
+    const obsTooOld = obsAgeMin > 75;   // beyond ~5 sample windows = stale
+    const obsWindSuspect =
+      observation.windSpeedKt != null &&
+      observation.windSpeedKt === 0 &&
+      forecastNow.windSpeedKt > 1;
+    const useObsWind =
+      observation.windSpeedKt != null && !obsTooOld && !obsWindSuspect;
+
+    const windSpeedKt = useObsWind ? observation.windSpeedKt! : forecastNow.windSpeedKt;
+    const windSpeedMph = useObsWind && observation.windSpeedMph != null ? observation.windSpeedMph : forecastNow.windSpeedMph;
+    const windGustKt = useObsWind ? (observation.windGustKt ?? forecastNow.windGustKt) : forecastNow.windGustKt;
+    const windDirDeg = useObsWind && observation.windDirDeg != null ? observation.windDirDeg : forecastNow.windDirDeg;
+    const obsBf = useObsWind ? beaufort(windSpeedKt) : null;
+
     now = {
       ...forecastNow,
-      tempF:          observation.tempF        ?? forecastNow.tempF,
-      feelsLikeF:     observation.heatIndexF   ?? observation.windChillF ?? observation.tempF ?? forecastNow.feelsLikeF,
-      shortForecast:  observation.textDescription ?? forecastNow.shortForecast,
-      windSpeedKt:    observation.windSpeedKt  ?? forecastNow.windSpeedKt,
-      windSpeedMph:   observation.windSpeedMph ?? forecastNow.windSpeedMph,
-      windGustKt:     observation.windGustKt   ?? forecastNow.windGustKt,
-      windDirDeg:     observation.windDirDeg   ?? forecastNow.windDirDeg,
-      windDirCardinal: observation.windDirDeg != null ? cardinal(observation.windDirDeg) : forecastNow.windDirCardinal,
+      tempF:          obsTooOld ? forecastNow.tempF       : (observation.tempF        ?? forecastNow.tempF),
+      feelsLikeF:     obsTooOld ? forecastNow.feelsLikeF  : (observation.heatIndexF   ?? observation.windChillF ?? observation.tempF ?? forecastNow.feelsLikeF),
+      shortForecast:  obsTooOld ? forecastNow.shortForecast : (observation.textDescription ?? forecastNow.shortForecast),
+      windSpeedKt,
+      windSpeedMph,
+      windGustKt,
+      windDirDeg,
+      windDirCardinal: cardinal(windDirDeg),
       beaufortForce:  obsBf?.force ?? forecastNow.beaufortForce,
       beaufortName:   obsBf?.name  ?? forecastNow.beaufortName,
-      humidity:       observation.humidity     ?? forecastNow.humidity,
-      dewPointF:      observation.dewPointF    ?? forecastNow.dewPointF,
-      pressureInHg:   observation.pressureInHg ?? forecastNow.pressureInHg,
-      visibilityMi:   observation.visibilityMi ?? forecastNow.visibilityMi,
+      humidity:       obsTooOld ? forecastNow.humidity     : (observation.humidity     ?? forecastNow.humidity),
+      dewPointF:      obsTooOld ? forecastNow.dewPointF    : (observation.dewPointF    ?? forecastNow.dewPointF),
+      pressureInHg:   obsTooOld ? forecastNow.pressureInHg : (observation.pressureInHg ?? forecastNow.pressureInHg),
+      visibilityMi:   obsTooOld ? forecastNow.visibilityMi : (observation.visibilityMi ?? forecastNow.visibilityMi),
     };
   }
 
