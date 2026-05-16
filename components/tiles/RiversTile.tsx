@@ -32,15 +32,31 @@ const STATUS_CLASS: Record<RiverGauge["status"], "good" | "warn" | "bad" | "info
 };
 
 function flowContextLine(g: RiverGauge): string | null {
-  if (g.flowPercentile == null) return null;
-  const p = g.flowPercentile;
+  // We have at least one of: a percentile, a current discharge, a median.
+  // Compose whatever fragments are available so users always see real numbers
+  // next to the comparison.
+  const cfs = g.dischargeCfs;
   const med = g.medianFlowCfs;
-  const medStr = med != null ? `; median is ${Math.round(med).toLocaleString()} cfs` : "";
-  if (p < 10) return `Flow in lowest 10% of record for today${medStr}.`;
-  if (p < 25) return `Flow below normal for today (${p}th percentile)${medStr}.`;
-  if (p > 90) return `Flow much above normal for today (${p}th percentile)${medStr}.`;
-  if (p > 75) return `Flow above normal for today (${p}th percentile)${medStr}.`;
-  return `Flow within normal range for today (${p}th percentile)${medStr}.`;
+  const p = g.flowPercentile;
+  if (cfs == null && med == null && p == null) return null;
+
+  const cfsStr = cfs != null ? `${Math.round(cfs).toLocaleString()} cfs` : null;
+  const medStr = med != null ? `median ${Math.round(med).toLocaleString()} cfs` : null;
+
+  let qualifier: string;
+  if (p == null)        qualifier = "Flow";
+  else if (p < 10)      qualifier = `Flow in lowest 10% of record for today`;
+  else if (p < 25)      qualifier = `Flow below normal for today (P${p})`;
+  else if (p > 90)      qualifier = `Flow much above normal for today (P${p})`;
+  else if (p > 75)      qualifier = `Flow above normal for today (P${p})`;
+  else                  qualifier = `Flow within normal range for today (P${p})`;
+
+  // "Flow within normal range for today (P48) — 1,205 cfs vs median 1,240 cfs."
+  const parts: string[] = [qualifier];
+  if (cfsStr && medStr) parts.push(`— ${cfsStr} vs ${medStr}`);
+  else if (cfsStr)      parts.push(`— ${cfsStr}`);
+  else if (medStr)      parts.push(`— ${medStr}`);
+  return parts.join(" ") + ".";
 }
 
 export default function RiversTile({ gauges }: { gauges: RiverGauge[] }) {
