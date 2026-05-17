@@ -306,3 +306,69 @@ export interface Station {
   nwsZone: string;
   marineZone: string;
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// User profile / auth types (Phase 1 of the auth rollout — Supabase).
+// Guest sessions never see these; the hard-coded STATIONS list in
+// lib/stations.ts is the fallback when no user is signed in.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string;                  // matches auth.users.id
+  email: string | null;
+  displayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A user's saved location — the persistent equivalent of `Station`. Shape
+ *  matches the public.user_locations table, with camelCase mapping done at
+ *  the data layer. */
+export interface UserLocation {
+  id: string;
+  displayName: string;
+  lat: number;
+  lon: number;
+  tideStationId: string;
+  tideStationNote?: string | null;
+  observationStationId?: string | null;
+  windStations: WindStationRef[];
+  buoyId?: string | null;
+  nwsZone?: string | null;
+  marineZone?: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface UserGauge {
+  id: string;
+  usgsSiteId: string;
+  displayName?: string | null;
+  floodStageOverride?: number | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export type ThemeMode = "light" | "dark" | "auto";
+export type WindUnits = "kt" | "mph" | "all";
+export type TempUnits = "F" | "C";
+export type HeightUnits = "ft" | "m";
+export type TimeFormatPref = "12h" | "24h";
+
+/** Tile visibility / ordering config. Keys are stable tile identifiers
+ *  (e.g. "rightnow", "tides", "windnow") so the shape is stable even as
+ *  we add/remove tiles. Missing entries → defaults (visible, default order). */
+export interface TileConfig {
+  [tileKey: string]: { visible: boolean; order: number };
+}
+
+export interface UserPreferences {
+  theme: ThemeMode;
+  unitsWind: WindUnits;
+  unitsTemp: TempUnits;
+  unitsHeight: HeightUnits;
+  timeFormat: TimeFormatPref;
+  tileConfig: TileConfig;
+  updatedAt: string;
+}

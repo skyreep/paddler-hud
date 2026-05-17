@@ -29,7 +29,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning on <html>: the pre-paint <script> below
+    // mutates `data-theme` before React hydrates, which would otherwise
+    // trip a hydration mismatch warning. The flag is scoped to attributes
+    // on this element only — it does NOT suppress mismatches in children.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />

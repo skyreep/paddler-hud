@@ -35,12 +35,20 @@ const DEFAULT_GAUGES = [
 ];
 const MAX_GAUGES = 10;
 
-export default async function Home({ searchParams }: { searchParams: { station?: string; gauges?: string } }) {
-  const station = getStation(searchParams.station);
-  const stationKey = searchParams.station && getStation(searchParams.station).key === searchParams.station
-    ? searchParams.station
+export default async function Home({
+  searchParams,
+}: {
+  // Next 15+: `searchParams` is a Promise on the server and must be awaited
+  // before its keys can be read. See:
+  // https://nextjs.org/docs/messages/sync-dynamic-apis
+  searchParams: Promise<{ station?: string; gauges?: string }>;
+}) {
+  const params = await searchParams;
+  const station = getStation(params.station);
+  const stationKey = params.station && getStation(params.station).key === params.station
+    ? params.station
     : DEFAULT_STATION_KEY;
-  const gaugeIds = (searchParams.gauges ?? DEFAULT_GAUGES.join(",")).split(",").slice(0, MAX_GAUGES);
+  const gaugeIds = (params.gauges ?? DEFAULT_GAUGES.join(",")).split(",").slice(0, MAX_GAUGES);
 
   const safe = <T,>(p: Promise<T>) => p.catch((e) => { console.error("hud fetch:", e); return null; });
 
