@@ -55,6 +55,9 @@ export default async function Home({
   // a stale or unknown station key, drop it so the URL matches what's shown.
   const stationKey = station.key;
   const gaugeIds = gaugesResult.ids;
+  // Full DB rows for the gauge editor — null for guests so the editor
+  // renders the read-only "sign in to customize" variant.
+  const userGauges = gaugesResult.userRows;
 
   const safe = <T,>(p: Promise<T>) => p.catch((e) => { console.error("hud fetch:", e); return null; });
 
@@ -147,7 +150,7 @@ export default async function Home({
           {weather && <WeeklyTile days={weather.daily} attribution={weather.attribution} prefs={initialPreferences} />}
           <RadarTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
           {buoy && <MarineTile buoy={buoy} prefs={initialPreferences} />}
-          <RiversTile gauges={validGauges} prefs={initialPreferences} />
+          <RiversTile gauges={validGauges} prefs={initialPreferences} userGauges={userGauges} />
           {tropical && <TropicalTile tropical={tropical} prefs={initialPreferences} />}
           <AstroTile astro={astro} prefs={initialPreferences} />
           <SolunarTile periods={astro.solunar} prefs={initialPreferences} />
@@ -159,6 +162,9 @@ export default async function Home({
         }}>
           Data: NOAA CO-OPS, NWS, USGS, NHC, EPA AirNow, Open-Meteo (UV + marine model), SunCalc.<br />
           Always verify conditions with official sources before launching.
+          <div style={{ marginTop: 10, color: "var(--text-faint)", opacity: 0.85 }}>
+            Tidevisor is a product of the Georgia Coast.
+          </div>
         </div>
       </main>
 

@@ -1,5 +1,6 @@
-import type { RiverGauge, UserPreferences } from "@/lib/types";
+import type { RiverGauge, UserGauge, UserPreferences } from "@/lib/types";
 import { heightUnitLabel, ftToM } from "@/lib/units";
+import GaugeEditorTrigger from "@/components/gauges/GaugeEditorTrigger";
 
 // Paddler-relevant labels covering the full flow spectrum: drought-low through
 // flood. "Normal" now means within the typical seasonal range (USGS P25-P75),
@@ -60,14 +61,28 @@ function flowContextLine(g: RiverGauge): string | null {
   return parts.join(" ") + ".";
 }
 
-export default function RiversTile({ gauges, prefs }: { gauges: RiverGauge[]; prefs?: UserPreferences }) {
+interface RiversTileProps {
+  gauges: RiverGauge[];
+  prefs?: UserPreferences;
+  /** Full DB rows for the gauge editor — only present for signed-in users.
+   *  Null = guest mode (editor opens read-only with a sign-in CTA). */
+  userGauges?: UserGauge[] | null;
+}
+
+export default function RiversTile({ gauges, prefs, userGauges = null }: RiversTileProps) {
   const hu = prefs?.unitsHeight ?? "ft";
   const convertH = (ft: number) => hu === "m" ? ftToM(ft) : ft;
+  // What to show the editor when the user is a guest — the same list
+  // the dashboard is rendering, so the modal is a faithful read-only view.
+  const fallbackIds = gauges.map((g) => g.siteId);
   return (
     <section className="tile">
       <div className="tile-head">
         <span className="tile-title">Saved River Gauges</span>
-        <span className="tile-meta">USGS · {gauges.length} of 10 saved</span>
+        <span className="tile-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span>USGS · {gauges.length} of 10 saved</span>
+          <GaugeEditorTrigger initialGauges={userGauges} fallbackIds={fallbackIds} />
+        </span>
       </div>
       {gauges.length === 0 && (
         <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "8px 0" }}>
@@ -127,20 +142,12 @@ export default function RiversTile({ gauges, prefs }: { gauges: RiverGauge[]; pr
           </div>
         );
       })}
-      <button style={{
-        marginTop: 10, padding: "10px 12px",
-        background: "transparent", border: "1px dashed var(--border)",
-        color: "var(--text-muted)", borderRadius: 12,
-        width: "100%", fontSize: 13, fontWeight: 600, cursor: "pointer",
-      }}>
-        + Add a USGS gauge by station ID
-      </button>
       <div style={{
-        marginTop: 8, fontSize: 11, color: "var(--text-faint)", lineHeight: 1.4,
+        marginTop: 12, fontSize: 11, color: "var(--text-faint)", lineHeight: 1.4,
       }}>
         Status compares today&apos;s flow against the USGS historical record for the
         same day-of-year (percentiles), then yields to NWS AHPS flood stages at
-        the high end.
+        the high end. Add or reorder gauges with the Edit button above.
       </div>
     </section>
   );
