@@ -10,6 +10,10 @@ export interface LocationActionResult {
   ok: boolean;
   /** Refreshed list of the user's saved locations, sorted by sort_order. */
   locations?: UserLocation[];
+  /** UUID of the row just added — set by addLocation only. Lets the
+   *  client navigate to `?station=<id>` so the dashboard auto-switches
+   *  to the new spot instead of staying on whatever was active. */
+  addedId?: string;
   error?: string;
 }
 
@@ -18,5 +22,23 @@ export interface LocationActionResult {
 export interface ResolveCandidateResult {
   ok: boolean;
   result?: ResolverResult;
+  error?: string;
+}
+
+/** A single hit from the place-name geocoder. The label is precomputed
+ *  on the server so the UI doesn't have to reassemble it. */
+export interface GeocoderHit {
+  name: string;          // e.g. "Savannah"
+  admin1: string | null; // e.g. "Georgia"
+  country: string;       // e.g. "United States"
+  lat: number;
+  lon: number;
+  /** "Savannah, Georgia, United States" — ready to display. */
+  label: string;
+}
+
+export interface SearchPlacesResult {
+  ok: boolean;
+  hits?: GeocoderHit[];
   error?: string;
 }

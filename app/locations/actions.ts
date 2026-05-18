@@ -17,6 +17,8 @@ import type { UserLocation, WindStationRef } from "@/lib/types";
 import type {
   LocationActionResult,
   ResolveCandidateResult,
+  SearchPlacesResult,
+  GeocoderHit,
 } from "@/lib/location-action-result";
 
 const MAX_LOCATIONS = 6;
@@ -103,6 +105,75 @@ export async function resolveCandidate(
 }
 
 /**
+ * Search place names via Open-Meteo's free geocoding API. No API key
+ * required — we already use Open-Meteo for UV/marine, so no new
+ * provider relationship. Returns up to 5 hits with name + admin1 +
+ * country + lat/lon precomputed into a display label.
+ *
+ * Accepts town names ("Savannah", "Tybee Island") and US zip codes
+ * ("31401") — Open-Meteo's index covers both fairly well, though zips
+ * can be hit-or-miss for less-populated areas. If a zip fails, the
+ * caller can suggest trying a nearby town name instead.
+ */
+export async function searchPlaces(query: string): Promise<SearchPlacesResult> {
+  try {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      // Too short to be useful — bail without hitting the API.
+      return { ok: true, hits: [] };
+    }
+    const url =
+      "https://geocoding-api.open-meteo.com/v1/search"
+      + `?name=${encodeURIComponent(trimmed)}`
+      + "&count=5&language=en&format=json";
+    const res = await fetch(url, {
+      // Open-Meteo recommends no-cache for geocoding queries since
+      // results are query-specific. Letting Next cache by URL is fine
+      // and reasonably hot for common towns.
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Geocoder returned ${res.status}.` };
+    }
+    const data = await res.json() as {
+      results?: Array<{
+        name?: string;
+        latitude?: number;
+        longitude?: number;
+        country?: string;
+        admin1?: string;
+      }>;
+    };
+    const hits: GeocoderHit[] = (data.results ?? [])
+      .filter((r) =>
+        r.name && typeof r.latitude === "number" && typeof r.longitude === "number",
+      )
+      .map((r) => {
+        const admin1 = r.admin1 ?? null;
+        const country = r.country ?? "";
+        // Build the display label. Skip pieces that aren't present so
+        // we don't show "Savannah, , United States".
+        const labelParts = [r.name!, admin1, country].filter((s): s is string => !!s && s.length > 0);
+        return {
+          name: r.name!,
+          admin1,
+          country,
+          lat: r.latitude!,
+          lon: r.longitude!,
+          label: labelParts.join(", "),
+        };
+      });
+    return { ok: true, hits };
+  } catch (err) {
+    console.error("[locations] searchPlaces crashed:", err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Place search failed.",
+    };
+  }
+}
+
+/**
  * Save a resolved bundle as a new user_locations row. Enforces the
  * 6-location cap and refuses to insert a duplicate (matching displayName).
  */
@@ -124,29 +195,39 @@ export async function addLocation(bundle: ResolvedLocationBundle): Promise<Locat
       return { ok: false, error: `Already at the ${MAX_LOCATIONS}-location cap. Remove one to add another.` };
     }
 
-    const { error: insertError } = await supabase.from("user_locations").insert({
-      user_id: userId,
-      display_name: bundle.displayName.trim(),
-      lat: bundle.lat,
-      lon: bundle.lon,
-      tide_station_id: bundle.tideStationId,
-      tide_station_note: bundle.tideStationNote,
-      observation_station_id: bundle.observationStationId,
-      wind_stations: bundle.windStations,
-      buoy_id: bundle.buoyId,
-      nws_zone: bundle.nwsZone,
-      marine_zone: bundle.marineZone,
-      sort_order: existing.length,
-      // First location auto-becomes primary; subsequent ones don't.
-      is_primary: existing.length === 0,
-    });
+    const { data: inserted, error: insertError } = await supabase
+      .from("user_locations")
+      .insert({
+        user_id: userId,
+        display_name: bundle.displayName.trim(),
+        lat: bundle.lat,
+        lon: bundle.lon,
+        tide_station_id: bundle.tideStationId,
+        tide_station_note: bundle.tideStationNote,
+        observation_station_id: bundle.observationStationId,
+        wind_stations: bundle.windStations,
+        buoy_id: bundle.buoyId,
+        nws_zone: bundle.nwsZone,
+        marine_zone: bundle.marineZone,
+        sort_order: existing.length,
+        // First location auto-becomes primary; subsequent ones don't.
+        is_primary: existing.length === 0,
+      })
+      .select("id")
+      .single();
 
     if (insertError) {
       return { ok: false, error: insertError.message };
     }
 
     revalidatePath("/", "layout");
-    return { ok: true, locations: await listLocations(supabase) };
+    return {
+      ok: true,
+      locations: await listLocations(supabase),
+      // Surface the new row's ID so the wizard can navigate the
+      // dashboard to ?station=<addedId> after saving.
+      addedId: inserted?.id ? String(inserted.id) : undefined,
+    };
   } catch (err) {
     console.error("[locations] addLocation crashed:", err);
     return {

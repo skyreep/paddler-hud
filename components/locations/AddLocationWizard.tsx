@@ -15,12 +15,13 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { addLocation, resolveCandidate } from "@/app/locations/actions";
+import { addLocation, resolveCandidate, searchPlaces } from "@/app/locations/actions";
 import type {
   ResolvedLocationBundle,
   ResolverResult,
   ResolverWarning,
 } from "@/lib/location-resolver";
+import type { GeocoderHit } from "@/lib/location-action-result";
 import type { WindStationRef } from "@/lib/types";
 import {
   FieldSelector,
@@ -32,6 +33,7 @@ import {
   encodeWindValue,
   decodeWindValue,
 } from "./SourcePickers";
+import MapPickerOverlay from "./MapPickerOverlay";
 
 interface Props {
   open: boolean;
@@ -52,13 +54,32 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>({ kind: "pick" });
   const [geolocating, setGeolocating] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   // Reset state every time the wizard opens.
   useEffect(() => {
     if (!open) return;
     setStep({ kind: "pick" });
     setGeolocating(false);
+    setMapPickerOpen(false);
   }, [open]);
+
+  /** Drive the resolve → preview transition. Shared by all three coord
+   *  sources (search hit, current location, map tap) so failure handling
+   *  and step-state writes live in one place. */
+  async function resolveAndAdvance(lat: number, lon: number, suggestedName?: string) {
+    setStep({ kind: "resolving", lat, lon });
+    const result = await resolveCandidate(lat, lon, suggestedName);
+    if (!result.ok || !result.result) {
+      setStep({
+        kind: "error",
+        message: result.error ?? "Couldn't look up station data for that location.",
+        retryFrom: "pick",
+      });
+      return;
+    }
+    setStep({ kind: "preview", result: result.result });
+  }
 
   // Close on Escape.
   useEffect(() => {
@@ -80,7 +101,7 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
     if (!navigator.geolocation) {
       setStep({
         kind: "error",
-        message: "Your browser doesn't support geolocation. Search by town/zip is coming in a future update.",
+        message: "Your browser doesn't support geolocation. Try searching by town/zip or tapping on the map instead.",
         retryFrom: "pick",
       });
       return;
@@ -89,24 +110,13 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         setGeolocating(false);
-        const { latitude, longitude } = pos.coords;
-        setStep({ kind: "resolving", lat: latitude, lon: longitude });
-        const result = await resolveCandidate(latitude, longitude);
-        if (!result.ok || !result.result) {
-          setStep({
-            kind: "error",
-            message: result.error ?? "Couldn't look up station data for that location.",
-            retryFrom: "pick",
-          });
-          return;
-        }
-        setStep({ kind: "preview", result: result.result });
+        await resolveAndAdvance(pos.coords.latitude, pos.coords.longitude);
       },
       (err) => {
         setGeolocating(false);
         let message = "Couldn't get your location.";
         if (err.code === err.PERMISSION_DENIED) {
-          message = "Location permission denied. You'll need to allow location access (or use town/zip search in a future update).";
+          message = "Location permission denied. Try searching by town/zip or tapping on the map instead.";
         } else if (err.code === err.POSITION_UNAVAILABLE) {
           message = "Your device couldn't determine your position. Try again outside or near a window.";
         } else if (err.code === err.TIMEOUT) {
@@ -116,6 +126,17 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
       },
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
     );
+  }
+
+  /** Place-search result clicked. */
+  async function pickFromSearchHit(hit: GeocoderHit) {
+    await resolveAndAdvance(hit.lat, hit.lon, hit.label);
+  }
+
+  /** Map picker tapped + confirmed. */
+  async function pickFromMap(lat: number, lon: number) {
+    setMapPickerOpen(false);
+    await resolveAndAdvance(lat, lon);
   }
 
   async function handleSave(bundle: ResolvedLocationBundle) {
@@ -131,9 +152,17 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
       setStep({ kind: "error", message: result.error ?? "Couldn't save.", retryFrom: "preview" });
       return;
     }
-    // Force a refresh so the new location shows up in the picker
-    // and all downstream loaders pick it up.
-    router.refresh();
+    // Auto-switch the dashboard to the newly-added spot. Without this
+    // the page just refreshes on whatever station was active, and the
+    // user has to manually click the new location in the picker — which
+    // is surprising right after they just created it. router.push()
+    // implicitly invalidates the route cache, so a separate refresh()
+    // isn't needed.
+    if (result.addedId) {
+      router.push(`/?station=${result.addedId}`);
+    } else {
+      router.refresh();
+    }
     onSaved?.();
     onClose();
   }
@@ -142,6 +171,7 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
   if (typeof document === "undefined") return null;
 
   return createPortal(
+    <>
     <div onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="add-location-title" style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={sheet}>
         <div style={dragHandle} />
@@ -152,7 +182,12 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
         </div>
 
         {step.kind === "pick" && (
-          <PickStep onCurrentLocation={useCurrentLocation} geolocating={geolocating} />
+          <PickStep
+            onCurrentLocation={useCurrentLocation}
+            onSearchPick={pickFromSearchHit}
+            onOpenMap={() => setMapPickerOpen(true)}
+            geolocating={geolocating}
+          />
         )}
 
         {step.kind === "resolving" && (
@@ -193,33 +228,142 @@ export default function AddLocationWizard({ open, onClose, onSaved }: Props) {
           </>
         )}
       </div>
-    </div>,
+    </div>
+    <MapPickerOverlay
+      open={mapPickerOpen}
+      onClose={() => setMapPickerOpen(false)}
+      onPick={pickFromMap}
+    />
+    </>,
     document.body,
   );
 }
 
 // ─── Step components ──────────────────────────────────────────────────────
 
-function PickStep({ onCurrentLocation, geolocating }: { onCurrentLocation: () => void; geolocating: boolean }) {
+function PickStep({
+  onCurrentLocation, onSearchPick, onOpenMap, geolocating,
+}: {
+  onCurrentLocation: () => void;
+  onSearchPick: (hit: GeocoderHit) => void;
+  onOpenMap: () => void;
+  geolocating: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<GeocoderHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Debounce the search by 300ms so we don't fire a server action on
+  // every keystroke. Open-Meteo's geocoder is fast (~150ms) but we
+  // still don't want to spam it during typing bursts.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setHits([]);
+      setSearchError(null);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    setSearchError(null);
+    const timer = setTimeout(async () => {
+      const res = await searchPlaces(trimmed);
+      if (cancelled) return;
+      setSearching(false);
+      if (!res.ok) {
+        setHits([]);
+        setSearchError(res.error ?? "Search failed.");
+        return;
+      }
+      setHits(res.hits ?? []);
+      if ((res.hits ?? []).length === 0) {
+        setSearchError("No matches. Try a different town name or zip code.");
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query]);
+
   return (
     <>
-      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 16px" }}>
-        We&apos;ll find the nearest tide station, weather observation, and wave buoy automatically.
-        You&apos;ll get a preview to review before saving.
+      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>
+        We&apos;ll find the nearest tide station, weather observation, and wave buoy
+        automatically and let you review before saving.
       </p>
 
-      <button type="button" onClick={onCurrentLocation} disabled={geolocating} style={primaryBtn}>
-        {geolocating ? "Getting your location…" : "📍 Use my current location"}
+      {/* Search box — the most universal input method, prominent at top. */}
+      <label style={searchLabel}>
+        Search by town or zip code
+      </label>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="e.g. Tybee Island, Savannah, or 31328"
+        autoFocus
+        style={input}
+        autoComplete="off"
+      />
+      {searching && (
+        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4, marginBottom: 8 }}>
+          Searching…
+        </div>
+      )}
+      {searchError && !searching && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, marginBottom: 8 }}>
+          {searchError}
+        </div>
+      )}
+      {hits.length > 0 && (
+        <div style={{
+          marginTop: 8, marginBottom: 8,
+          background: "var(--bg-elev-2)",
+          border: "1px solid var(--border-soft)",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}>
+          {hits.map((h, i) => (
+            <button
+              key={`${h.lat},${h.lon}`}
+              type="button"
+              onClick={() => onSearchPick(h)}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                color: "var(--text)",
+                border: "none",
+                borderTop: i === 0 ? "none" : "1px solid var(--border-soft)",
+                fontSize: 13, fontWeight: 500,
+                fontFamily: "inherit", cursor: "pointer",
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>{h.name}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                {[h.admin1, h.country].filter(Boolean).join(", ")} · {h.lat.toFixed(3)}, {h.lon.toFixed(3)}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={dividerLabel}>or</div>
+
+      <button type="button" onClick={onCurrentLocation} disabled={geolocating} style={methodBtn}>
+        <span style={methodIcon}>📍</span>
+        <span style={{ flex: 1, textAlign: "left" }}>
+          <div style={methodTitle}>Use my current location</div>
+          <div style={methodSub}>{geolocating ? "Getting your location…" : "Best on a phone, at the launch point"}</div>
+        </span>
       </button>
 
-      <div style={{
-        marginTop: 14, padding: 12,
-        background: "var(--bg-elev-2)", border: "1px dashed var(--border)",
-        borderRadius: 10, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5,
-      }}>
-        <strong>Coming soon:</strong> search by town or zip code, and tap-on-a-map. For now,
-        adding by current location works best on a phone where you actually paddle from.
-      </div>
+      <button type="button" onClick={onOpenMap} style={methodBtn}>
+        <span style={methodIcon}>🗺️</span>
+        <span style={{ flex: 1, textAlign: "left" }}>
+          <div style={methodTitle}>Tap on a map</div>
+          <div style={methodSub}>Pick an exact spot for a specific launch</div>
+        </span>
+      </button>
     </>
   );
 }
@@ -547,4 +691,35 @@ const fieldLabel: React.CSSProperties = {
   textTransform: "uppercase", letterSpacing: ".4px",
   fontWeight: 600,
   marginBottom: 6,
+};
+const searchLabel: React.CSSProperties = {
+  ...fieldLabel,
+};
+const dividerLabel: React.CSSProperties = {
+  textAlign: "center",
+  fontSize: 11, color: "var(--text-faint)",
+  margin: "16px 0 10px",
+  textTransform: "uppercase",
+  letterSpacing: ".5px",
+};
+const methodBtn: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 12,
+  width: "100%", padding: "12px 14px",
+  marginBottom: 8,
+  background: "var(--bg-elev-2)",
+  color: "var(--text)",
+  border: "1px solid var(--border-soft)",
+  borderRadius: 10,
+  fontFamily: "inherit", cursor: "pointer",
+};
+const methodIcon: React.CSSProperties = {
+  fontSize: 22, flexShrink: 0,
+  width: 32, textAlign: "center",
+};
+const methodTitle: React.CSSProperties = {
+  fontWeight: 600, fontSize: 14,
+};
+const methodSub: React.CSSProperties = {
+  fontSize: 12, color: "var(--text-muted)",
+  marginTop: 2,
 };
