@@ -26,6 +26,7 @@ import { resolveWind } from "@/lib/wind-resolver";
 import { getCurrentUser } from "@/lib/auth";
 import { loadLocations, resolveLocation } from "@/lib/locations";
 import { loadGaugeIds } from "@/lib/gauges";
+import { loadPreferences } from "@/lib/preferences";
 
 export default async function Home({
   searchParams,
@@ -38,15 +39,17 @@ export default async function Home({
   const params = await searchParams;
 
   // Resolve auth + the user-aware data sources together. loadLocations /
-  // loadGaugeIds each do at most one Supabase round-trip and gracefully
-  // fall back to the hardcoded defaults if anything goes wrong, so they're
-  // safe to await before the upstream weather/tide fetches.
-  const [currentUser, locationsResult, gaugesResult] = await Promise.all([
+  // loadGaugeIds / loadPreferences each do at most one Supabase round-trip
+  // and gracefully fall back to the hardcoded defaults if anything goes
+  // wrong, so they're safe to await before the upstream weather/tide fetches.
+  const [currentUser, locationsResult, gaugesResult, prefsResult] = await Promise.all([
     getCurrentUser().catch(() => null),
     loadLocations(),
     loadGaugeIds(params.gauges ?? null),
+    loadPreferences(),
   ]);
   const { locations, primary } = locationsResult;
+  const initialPreferences = prefsResult.preferences;
   const station = resolveLocation(params.station, locations, primary);
   // The URL key only persists when it actually resolves; if the user passed
   // a stale or unknown station key, drop it so the URL matches what's shown.
@@ -111,6 +114,7 @@ export default async function Home({
         currentUser={currentUser}
         locations={locations}
         primaryKey={primary.key}
+        initialPreferences={initialPreferences}
       />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>

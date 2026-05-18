@@ -192,11 +192,10 @@ export default function AccountMenu({ initialUser }: Props) {
             )}
           </div>
 
-          {/* Settings entry — wire to a real /settings route in Phase 4. */}
-          <button type="button" role="menuitem" style={menuItem} disabled title="Coming soon">
-            Account settings
-          </button>
-
+          {/* Preferences live in the topbar's gear button (visible to both
+              guests and signed-in users). We could also expose it here as
+              a redundant entry, but keeping the dropdown focused on
+              account-state actions reads cleaner. */}
           <button
             type="button"
             role="menuitem"

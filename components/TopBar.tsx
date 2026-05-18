@@ -3,9 +3,10 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import LocationPicker from "./LocationPicker";
 import AccountMenu from "./auth/AccountMenu";
+import PreferencesModal from "./preferences/PreferencesModal";
 import { refreshHud } from "@/app/actions";
 import type { CurrentUser } from "@/lib/auth";
-import type { ResolvedLocation } from "@/lib/types";
+import type { ResolvedLocation, UserPreferences } from "@/lib/types";
 
 interface Props {
   locationName: string;
@@ -19,11 +20,17 @@ interface Props {
   // which one to treat as the URL default so `?station=` is omitted.
   locations: ResolvedLocation[];
   primaryKey: string;
+  // Server-resolved user preferences. DEFAULT_PREFERENCES for guests,
+  // the user_preferences row for signed-in users. Passed to the
+  // preferences modal as its starting state.
+  initialPreferences: UserPreferences;
 }
 
 type ThemeMode = "light" | "dark" | "auto";
 
-export default function TopBar({ locationName, stationKey, currentUser, locations, primaryKey }: Props) {
+export default function TopBar({
+  locationName, stationKey, currentUser, locations, primaryKey, initialPreferences,
+}: Props) {
   const router = useRouter();
   // Single source of truth — theme mode. The pre-paint script in layout.tsx
   // sets data-theme on <html> BEFORE React hydrates, so both the server
@@ -32,11 +39,28 @@ export default function TopBar({ locationName, stationKey, currentUser, location
   // doesn't match the current data-theme; no JSX branching, no hydration risk.
   const [theme, setTheme] = useState<ThemeMode>("auto");
   const [locOpen, setLocOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const isSignedIn = !!currentUser;
+
+  // For signed-in users, sync the DB-stored theme preference into
+  // localStorage so the pre-paint script picks it up on the next load.
+  // This is the "cross-device theme follows me" payoff of preferences.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    try { localStorage.setItem("phud_theme", initialPreferences.theme); } catch {}
+  }, [isSignedIn, initialPreferences.theme]);
 
   useEffect(() => {
+    // For signed-in users, prefer the server-loaded theme over whatever
+    // localStorage might have (might be stale from a different device).
+    // For guests, localStorage is authoritative.
+    if (isSignedIn) {
+      setTheme(initialPreferences.theme);
+      return;
+    }
     const saved = (localStorage.getItem("phud_theme") as ThemeMode | null) ?? "auto";
     setTheme(saved);
-  }, []);
+  }, [isSignedIn, initialPreferences.theme]);
 
   useEffect(() => {
     const apply = (t: ThemeMode) => {
@@ -157,6 +181,21 @@ export default function TopBar({ locationName, stationKey, currentUser, location
           </svg>
         </button>
 
+        {/* Preferences gear — opens the full settings modal (theme, time
+            format, units). Available to guests too; guests' choices
+            persist to localStorage instead of the DB. */}
+        <button
+          onClick={() => setPrefsOpen(true)}
+          style={iconBtn}
+          aria-label="Preferences"
+          title="Preferences"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
         {/* Account button — pill "Sign in" for guests, avatar + dropdown
             for signed-in users. Renders nothing if Supabase isn't configured. */}
         <AccountMenu initialUser={currentUser} />
@@ -168,6 +207,13 @@ export default function TopBar({ locationName, stationKey, currentUser, location
         activeKey={stationKey}
         locations={locations}
         primaryKey={primaryKey}
+      />
+
+      <PreferencesModal
+        open={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        initialPreferences={initialPreferences}
+        isSignedIn={isSignedIn}
       />
     </>
   );
