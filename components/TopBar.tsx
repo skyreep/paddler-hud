@@ -6,7 +6,7 @@ import AccountMenu from "./auth/AccountMenu";
 import PreferencesModal from "./preferences/PreferencesModal";
 import { refreshHud } from "@/app/actions";
 import type { CurrentUser } from "@/lib/auth";
-import type { ResolvedLocation, UserPreferences } from "@/lib/types";
+import type { ResolvedLocation, UserLocation, UserPreferences } from "@/lib/types";
 
 interface Props {
   locationName: string;
@@ -20,6 +20,9 @@ interface Props {
   // which one to treat as the URL default so `?station=` is omitted.
   locations: ResolvedLocation[];
   primaryKey: string;
+  // Raw user_locations rows for the editor — null for guests so the
+  // editor renders read-only with a sign-in CTA.
+  userLocations: UserLocation[] | null;
   // Server-resolved user preferences. DEFAULT_PREFERENCES for guests,
   // the user_preferences row for signed-in users. Passed to the
   // preferences modal as its starting state.
@@ -29,7 +32,7 @@ interface Props {
 type ThemeMode = "light" | "dark" | "auto";
 
 export default function TopBar({
-  locationName, stationKey, currentUser, locations, primaryKey, initialPreferences,
+  locationName, stationKey, currentUser, locations, primaryKey, userLocations, initialPreferences,
 }: Props) {
   const router = useRouter();
   // Single source of truth — theme mode. The pre-paint script in layout.tsx
@@ -207,6 +210,7 @@ export default function TopBar({
         activeKey={stationKey}
         locations={locations}
         primaryKey={primaryKey}
+        userLocations={userLocations}
       />
 
       <PreferencesModal

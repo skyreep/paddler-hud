@@ -15,7 +15,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { STATIONS, DEFAULT_STATION_KEY } from "@/lib/stations";
-import type { ResolvedLocation, WindStationRef } from "@/lib/types";
+import type { ResolvedLocation, UserLocation, WindStationRef } from "@/lib/types";
 
 /** Project a hardcoded Station into the unified runtime shape. */
 function fromStation(key: string): ResolvedLocation {
@@ -28,32 +28,33 @@ function fromStation(key: string): ResolvedLocation {
 }
 
 /** Project a user_locations row (snake_case from Postgres) into the
- *  unified runtime shape. Skips rows missing fields that the HUD needs
- *  to actually fetch upstream data — the settings UI (Phase 4) will
- *  enforce these at write time. */
+ *  unified runtime shape. ONLY tide_station_id is strictly required (the
+ *  DB schema enforces NOT NULL for it). Optional fields default to empty
+ *  string so downstream fetchers either return safely (lib/nws.ts skips
+ *  empty zone IDs, METAR with empty ID throws and the safe() wrapper in
+ *  app/page.tsx returns null → tile hides) or are simply not used.
+ *
+ *  Previously this function required EVERY field — observation, buoy,
+ *  nws_zone, marine_zone — to be a non-null string, which dropped any
+ *  user-added location where the resolver couldn't find e.g. a marine
+ *  zone (common for inland addresses). Those rows then appeared in the
+ *  editor but not in the picker — confusing data ghost. */
 function fromUserRow(row: Record<string, unknown>): ResolvedLocation | null {
   const tideStationId = row.tide_station_id;
-  const obsStation = row.observation_station_id;
-  const buoyId = row.buoy_id;
-  const nwsZone = row.nws_zone;
-  const marineZone = row.marine_zone;
-
-  if (
-    typeof tideStationId !== "string" ||
-    typeof obsStation !== "string" ||
-    typeof buoyId !== "string" ||
-    typeof nwsZone !== "string" ||
-    typeof marineZone !== "string"
-  ) {
-    // Row hasn't been fully configured yet — skip rather than render a
-    // half-broken location. Once Phase 4 lands a settings UI we can
-    // surface this as a warning to the user.
+  if (typeof tideStationId !== "string" || !tideStationId) {
+    // Schema makes this column NOT NULL, so this shouldn't happen in
+    // practice — but if it ever does, skipping is safer than crashing.
     return null;
   }
 
   const wind = Array.isArray(row.wind_stations)
     ? (row.wind_stations as unknown[]).filter(isWindStationRef)
     : [];
+
+  // Coerce nullable fields to empty strings. The Station interface
+  // declares these as required strings; "" is the safe sentinel that
+  // downstream code already knows how to handle.
+  const strOrEmpty = (v: unknown): string => (typeof v === "string" ? v : "");
 
   return {
     key: String(row.id),
@@ -62,11 +63,11 @@ function fromUserRow(row: Record<string, unknown>): ResolvedLocation | null {
     lon: Number(row.lon),
     tideStationId,
     tideStationNote: typeof row.tide_station_note === "string" ? row.tide_station_note : undefined,
-    observationStationId: obsStation,
+    observationStationId: strOrEmpty(row.observation_station_id),
     windStations: wind.length ? wind : undefined,
-    buoyId,
-    nwsZone,
-    marineZone,
+    buoyId: strOrEmpty(row.buoy_id),
+    nwsZone: strOrEmpty(row.nws_zone),
+    marineZone: strOrEmpty(row.marine_zone),
     source: "user",
     isPrimary: Boolean(row.is_primary),
   };
@@ -94,6 +95,10 @@ export interface LoadedLocations {
   locations: ResolvedLocation[];
   primary: ResolvedLocation;
   source: "default" | "user";
+  /** Full DB rows for the location editor — only present for signed-in
+   *  users with saved rows. Null for guests / when defaults are in use.
+   *  Carries fields the dashboard projection drops (id, sort_order). */
+  userRows: UserLocation[] | null;
 }
 
 /**
@@ -117,7 +122,7 @@ export async function loadLocations(): Promise<LoadedLocations> {
     .select(
       "id, display_name, lat, lon, tide_station_id, tide_station_note, " +
         "observation_station_id, wind_stations, buoy_id, nws_zone, " +
-        "marine_zone, sort_order, is_primary",
+        "marine_zone, sort_order, is_primary, created_at",
     )
     .order("sort_order", { ascending: true });
 
@@ -143,13 +148,49 @@ export async function loadLocations(): Promise<LoadedLocations> {
   // LocationPicker's URL-stripping logic stays consistent.
   const normalized = projected.map((l) => ({ ...l, isPrimary: l.key === primary.key }));
 
-  return { locations: normalized, primary: { ...primary, isPrimary: true }, source: "user" };
+  // Build the parallel UserLocation list for the editor. Different from
+  // ResolvedLocation: keeps id, sortOrder, and nullable fields as-stored
+  // rather than projecting them through STATIONS-style defaults.
+  const userRows: UserLocation[] = rows.map((r) => userRowFromDb(r));
+
+  return {
+    locations: normalized,
+    primary: { ...primary, isPrimary: true },
+    source: "user",
+    userRows,
+  };
 }
 
 function fallbackToGuest(): LoadedLocations {
   const list = guestLocations();
   const primary = list.find((l) => l.isPrimary) ?? list[0];
-  return { locations: list, primary, source: "default" };
+  return { locations: list, primary, source: "default", userRows: null };
+}
+
+/** Convert a user_locations row to a UserLocation (camelCase). The editor
+ *  needs the raw shape rather than the ResolvedLocation projection. */
+function userRowFromDb(row: Record<string, unknown>): UserLocation {
+  const wind = Array.isArray(row.wind_stations) ? (row.wind_stations as unknown[]) : [];
+  const windStations: WindStationRef[] = wind
+    .filter((w): w is Record<string, unknown> => !!w && typeof w === "object")
+    .filter((w) => (w.kind === "coops" || w.kind === "ndbc") && typeof w.id === "string")
+    .map((w) => ({ kind: w.kind as "coops" | "ndbc", id: String(w.id) }));
+  return {
+    id: String(row.id),
+    displayName: String(row.display_name ?? ""),
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+    tideStationId: String(row.tide_station_id ?? ""),
+    tideStationNote: row.tide_station_note == null ? null : String(row.tide_station_note),
+    observationStationId: row.observation_station_id == null ? null : String(row.observation_station_id),
+    windStations,
+    buoyId: row.buoy_id == null ? null : String(row.buoy_id),
+    nwsZone: row.nws_zone == null ? null : String(row.nws_zone),
+    marineZone: row.marine_zone == null ? null : String(row.marine_zone),
+    sortOrder: Number(row.sort_order ?? 0),
+    isPrimary: Boolean(row.is_primary),
+    createdAt: typeof row.created_at === "string" ? row.created_at : "",
+  };
 }
 
 /** Resolve a `?station=<key>` URL param to a location in the given list.

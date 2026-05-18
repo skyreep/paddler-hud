@@ -48,7 +48,7 @@ export default async function Home({
     loadGaugeIds(params.gauges ?? null),
     loadPreferences(),
   ]);
-  const { locations, primary } = locationsResult;
+  const { locations, primary, userRows: userLocations } = locationsResult;
   const initialPreferences = prefsResult.preferences;
   const station = resolveLocation(params.station, locations, primary);
   // The URL key only persists when it actually resolves; if the user passed
@@ -117,6 +117,7 @@ export default async function Home({
         currentUser={currentUser}
         locations={locations}
         primaryKey={primary.key}
+        userLocations={userLocations}
         initialPreferences={initialPreferences}
       />
 
