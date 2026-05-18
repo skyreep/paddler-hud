@@ -2,16 +2,28 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import LocationPicker from "./LocationPicker";
+import AccountMenu from "./auth/AccountMenu";
 import { refreshHud } from "@/app/actions";
+import type { CurrentUser } from "@/lib/auth";
+import type { ResolvedLocation } from "@/lib/types";
 
 interface Props {
   locationName: string;
   stationKey: string;
+  // Server-resolved auth state. Null = guest. Threaded through here so
+  // AccountMenu's first paint matches the server render and there's no
+  // "Sign in" flash for already-signed-in users.
+  currentUser: CurrentUser | null;
+  // Locations the user can switch between (STATIONS for guests, their
+  // user_locations rows when signed in). primaryKey tells the picker
+  // which one to treat as the URL default so `?station=` is omitted.
+  locations: ResolvedLocation[];
+  primaryKey: string;
 }
 
 type ThemeMode = "light" | "dark" | "auto";
 
-export default function TopBar({ locationName, stationKey }: Props) {
+export default function TopBar({ locationName, stationKey, currentUser, locations, primaryKey }: Props) {
   const router = useRouter();
   // Single source of truth — theme mode. The pre-paint script in layout.tsx
   // sets data-theme on <html> BEFORE React hydrates, so both the server
@@ -137,12 +149,18 @@ export default function TopBar({ locationName, stationKey }: Props) {
           </svg>
         </button>
 
-        {/* Account avatar — hidden until user profiles ship. To restore:
-              <button style={avatarBtn} aria-label="Account">SR</button>
-            and re-enable the avatarBtn style block below. */}
+        {/* Account button — pill "Sign in" for guests, avatar + dropdown
+            for signed-in users. Renders nothing if Supabase isn't configured. */}
+        <AccountMenu initialUser={currentUser} />
       </header>
 
-      <LocationPicker open={locOpen} onClose={() => setLocOpen(false)} activeKey={stationKey} />
+      <LocationPicker
+        open={locOpen}
+        onClose={() => setLocOpen(false)}
+        activeKey={stationKey}
+        locations={locations}
+        primaryKey={primaryKey}
+      />
     </>
   );
 }
@@ -163,15 +181,4 @@ const iconBtn: React.CSSProperties = {
   background: "var(--bg-elev-2)", border: "1px solid var(--border-soft)",
   color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
   cursor: "pointer",
-};
-// Avatar style kept around for when user profiles ship — see commented JSX above.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const avatarBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: "50%",
-  background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-  color: "white", border: "none", fontWeight: 700, fontSize: 14,
-  display: "grid", placeItems: "center", cursor: "pointer",
-  flexShrink: 0,
-  aspectRatio: "1",
-  padding: 0,
 };

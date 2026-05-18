@@ -23,17 +23,9 @@ import { computeAstro } from "@/lib/astro";
 import { fetchAirQuality } from "@/lib/airnow";
 import { fetchTropical } from "@/lib/nhc";
 import { resolveWind } from "@/lib/wind-resolver";
-import { getStation, DEFAULT_STATION_KEY } from "@/lib/stations";
-
-// Default saved river gauges for first-load. Up to 10 USGS sites.
-const DEFAULT_GAUGES = [
-  "02198690",   // Ebenezer Creek nr Springfield, GA
-  "02202500",   // Ogeechee River at Eden, GA
-  "02226160",   // Altamaha River nr Everett City, GA
-  "02316000",   // Suwannee River at White Springs, FL  (region edge)
-  "02315500",   // Suwannee River at Fargo, GA
-];
-const MAX_GAUGES = 10;
+import { getCurrentUser } from "@/lib/auth";
+import { loadLocations, resolveLocation } from "@/lib/locations";
+import { loadGaugeIds } from "@/lib/gauges";
 
 export default async function Home({
   searchParams,
@@ -44,11 +36,22 @@ export default async function Home({
   searchParams: Promise<{ station?: string; gauges?: string }>;
 }) {
   const params = await searchParams;
-  const station = getStation(params.station);
-  const stationKey = params.station && getStation(params.station).key === params.station
-    ? params.station
-    : DEFAULT_STATION_KEY;
-  const gaugeIds = (params.gauges ?? DEFAULT_GAUGES.join(",")).split(",").slice(0, MAX_GAUGES);
+
+  // Resolve auth + the user-aware data sources together. loadLocations /
+  // loadGaugeIds each do at most one Supabase round-trip and gracefully
+  // fall back to the hardcoded defaults if anything goes wrong, so they're
+  // safe to await before the upstream weather/tide fetches.
+  const [currentUser, locationsResult, gaugesResult] = await Promise.all([
+    getCurrentUser().catch(() => null),
+    loadLocations(),
+    loadGaugeIds(params.gauges ?? null),
+  ]);
+  const { locations, primary } = locationsResult;
+  const station = resolveLocation(params.station, locations, primary);
+  // The URL key only persists when it actually resolves; if the user passed
+  // a stale or unknown station key, drop it so the URL matches what's shown.
+  const stationKey = station.key;
+  const gaugeIds = gaugesResult.ids;
 
   const safe = <T,>(p: Promise<T>) => p.catch((e) => { console.error("hud fetch:", e); return null; });
 
@@ -102,7 +105,13 @@ export default async function Home({
 
   return (
     <>
-      <TopBar locationName={station.displayName} stationKey={stationKey} />
+      <TopBar
+        locationName={station.displayName}
+        stationKey={stationKey}
+        currentUser={currentUser}
+        locations={locations}
+        primaryKey={primary.key}
+      />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
         <AdvisoryBanner alerts={alerts?.alerts ?? []} tropical={tropical} />

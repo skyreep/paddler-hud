@@ -1,23 +1,30 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { STATIONS, DEFAULT_STATION_KEY } from "@/lib/stations";
+import type { ResolvedLocation } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   activeKey: string;
+  // Resolved by the server in app/page.tsx. STATIONS for guests, the
+  // user's user_locations rows when signed in. Both shapes share the
+  // ResolvedLocation runtime type so we don't care which we're holding.
+  locations: ResolvedLocation[];
+  // Which key is the "primary" — selecting it drops `?station=` from the
+  // URL instead of setting it, keeping clean URLs for the default view.
+  primaryKey: string;
 }
 
-function urlForStation(key: string, baseParams: URLSearchParams): string {
+function urlForStation(key: string, baseParams: URLSearchParams, primaryKey: string): string {
   const params = new URLSearchParams(baseParams);
-  if (key === DEFAULT_STATION_KEY) params.delete("station");
+  if (key === primaryKey) params.delete("station");
   else params.set("station", key);
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
 
-export default function LocationPicker({ open, onClose, activeKey }: Props) {
+export default function LocationPicker({ open, onClose, activeKey, locations, primaryKey }: Props) {
   const router = useRouter();
   const search = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -30,10 +37,10 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
   useEffect(() => {
     if (!open) return;
     const base = new URLSearchParams(search?.toString() ?? "");
-    for (const key of Object.keys(STATIONS)) {
-      router.prefetch(urlForStation(key, base));
+    for (const loc of locations) {
+      router.prefetch(urlForStation(loc.key, base, primaryKey));
     }
-  }, [open, router, search]);
+  }, [open, router, search, locations, primaryKey]);
 
   // Close on Escape
   useEffect(() => {
@@ -53,7 +60,7 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
 
   function selectStation(key: string) {
     if (key === activeKey) { onClose(); return; }
-    const url = urlForStation(key, new URLSearchParams(search?.toString() ?? ""));
+    const url = urlForStation(key, new URLSearchParams(search?.toString() ?? ""), primaryKey);
     setPendingKey(key);
     // Wrap in a transition so React knows this is non-urgent state work —
     // gives us isPending for a visual loading indicator and keeps the click
@@ -139,7 +146,7 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
           Tap to switch the HUD to a saved spot.
         </p>
 
-        {Object.values(STATIONS).map((s) => {
+        {locations.map((s) => {
           const selected = s.key === activeKey;
           const loading = pendingKey === s.key && isPending;
           return (
@@ -175,7 +182,7 @@ export default function LocationPicker({ open, onClose, activeKey }: Props) {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>
-                  {s.displayName}{s.key === DEFAULT_STATION_KEY && " · Primary"}
+                  {s.displayName}{s.key === primaryKey && " · Primary"}
                 </div>
                 <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
                   Tide {s.tideStationId} · Buoy {s.buoyId} · {s.nwsZone}

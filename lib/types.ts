@@ -307,6 +307,20 @@ export interface Station {
   marineZone: string;
 }
 
+/** Runtime location shape used by app/page.tsx + LocationPicker. Either
+ *  a hardcoded Station projected into this type (`source: "default"`),
+ *  or a user_locations row projected into this type (`source: "user"`).
+ *  Components don't need to care which one they're holding — same fields,
+ *  same lookups.
+ *
+ *  `key` is the lookup token in `?station=<key>`: slug for defaults, UUID
+ *  for user rows. `isPrimary` controls which one renders first / which one
+ *  the URL drops the `?station=` param for. */
+export interface ResolvedLocation extends Station {
+  source: "default" | "user";
+  isPrimary: boolean;
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // User profile / auth types (Phase 1 of the auth rollout — Supabase).
 // Guest sessions never see these; the hard-coded STATIONS list in
