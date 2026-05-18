@@ -2,14 +2,14 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "LoCo WX",
+  title: "TIDEVISOR",
   description: "Mobile-first marine dashboard for paddlers of the Lowcountry.",
-  applicationName: "LoCo WX",
+  applicationName: "TIDEVISOR",
   // When added to an iOS home screen, the app launches in standalone mode
   // (no Safari chrome) with a translucent status bar over the topbar.
   appleWebApp: {
     capable: true,
-    title: "LoCo WX",
+    title: "TIDEVISOR",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {

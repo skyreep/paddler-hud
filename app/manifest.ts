@@ -7,8 +7,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "LoCo WX",
-    short_name: "LoCo WX",
+    name: "TIDEVISOR",
+    short_name: "TIDEVISOR",
     description: "Marine conditions for paddlers of the Lowcountry — tides, currents, weather, radar, satellite, and more.",
     start_url: "/",
     display: "standalone",
