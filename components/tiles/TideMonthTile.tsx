@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import type { TideResponse, TideExtreme } from "@/lib/types";
+import type { TideResponse, TideExtreme, UserPreferences } from "@/lib/types";
 import { fmtTime, STATION_TZ } from "@/lib/time";
+import { fmtHeight, heightUnitLabel, ftToM } from "@/lib/units";
 
 interface DaySummary {
   date: string;          // YYYY-MM-DD
@@ -35,7 +36,10 @@ function summarize(extremes: TideExtreme[]): DaySummary[] {
   });
 }
 
-export default function TideMonthTile({ tides }: { tides: TideResponse }) {
+export default function TideMonthTile({ tides, prefs }: { tides: TideResponse; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const hu = prefs?.unitsHeight ?? "ft";
+  const convertH = (ft: number) => hu === "m" ? ftToM(ft) : ft;
   const days = useMemo(() => summarize(tides.extended7Day), [tides.extended7Day]);
   const [openIdx, setOpenIdx] = useState<number | null>(0);
 
@@ -91,7 +95,7 @@ export default function TideMonthTile({ tides }: { tides: TideResponse }) {
                 </div>
                 <div>
                   <div className="num" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    Range <strong style={{ color: "var(--text)" }}>{d.range.toFixed(1)} ft</strong> · Hi {d.maxHigh.toFixed(1)} · Lo {d.minLow.toFixed(1)}
+                    Range <strong style={{ color: "var(--text)" }}>{convertH(d.range).toFixed(1)} {heightUnitLabel(hu)}</strong> · Hi {convertH(d.maxHigh).toFixed(1)} · Lo {convertH(d.minLow).toFixed(1)}
                   </div>
                   <div style={{
                     marginTop: 6, height: 4, background: "var(--border-soft)",
@@ -138,10 +142,10 @@ export default function TideMonthTile({ tides }: { tides: TideResponse }) {
                             {e.type === "H" ? "High" : "Low"}
                           </div>
                           <div className="num" style={{ fontWeight: 700, fontSize: 14 }}>
-                            {fmtTime(e.time)}
+                            {fmtTime(e.time, tf)}
                           </div>
                           <div className="num" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {e.height.toFixed(1)} ft
+                            {fmtHeight(e.height, hu)}
                           </div>
                         </div>
                       ))}

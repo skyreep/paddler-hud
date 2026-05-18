@@ -118,7 +118,7 @@ export default async function Home({
       />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
-        <AdvisoryBanner alerts={alerts?.alerts ?? []} tropical={tropical} />
+        <AdvisoryBanner alerts={alerts?.alerts ?? []} tropical={tropical} prefs={initialPreferences} />
 
         <div style={{
           display: "grid",
@@ -135,21 +135,22 @@ export default async function Home({
               attribution={weather.attribution}
               observation={weather.observation}
               windSource={windSource}
+              prefs={initialPreferences}
             />
           )}
-          {wind && <WindNowTile wind={wind} />}
+          {wind && <WindNowTile wind={wind} prefs={initialPreferences} />}
           <MapTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
-          {tides && <TideTile tides={tides} stationNote={station.tideStationNote} liveTideFt={water?.observedHeight ?? null} />}
-          {currents && <CurrentTile currents={currents} />}
-          {tides && <TideMonthTile tides={tides} />}
-          {weather && <HourlyTile hours={weather.hourly} attribution={weather.attribution} />}
-          {weather && <WeeklyTile days={weather.daily} attribution={weather.attribution} />}
+          {tides && <TideTile tides={tides} stationNote={station.tideStationNote} liveTideFt={water?.observedHeight ?? null} prefs={initialPreferences} />}
+          {currents && <CurrentTile currents={currents} prefs={initialPreferences} />}
+          {tides && <TideMonthTile tides={tides} prefs={initialPreferences} />}
+          {weather && <HourlyTile hours={weather.hourly} attribution={weather.attribution} prefs={initialPreferences} />}
+          {weather && <WeeklyTile days={weather.daily} attribution={weather.attribution} prefs={initialPreferences} />}
           <RadarTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
-          {buoy && <MarineTile buoy={buoy} />}
-          <RiversTile gauges={validGauges} />
-          {tropical && <TropicalTile tropical={tropical} />}
-          <AstroTile astro={astro} />
-          <SolunarTile periods={astro.solunar} />
+          {buoy && <MarineTile buoy={buoy} prefs={initialPreferences} />}
+          <RiversTile gauges={validGauges} prefs={initialPreferences} />
+          {tropical && <TropicalTile tropical={tropical} prefs={initialPreferences} />}
+          <AstroTile astro={astro} prefs={initialPreferences} />
+          <SolunarTile periods={astro.solunar} prefs={initialPreferences} />
         </div>
 
         <div style={{

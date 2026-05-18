@@ -1,9 +1,11 @@
-import type { Alert, TropicalResponse } from "@/lib/types";
+import type { Alert, TropicalResponse, UserPreferences } from "@/lib/types";
 import { STATION_TZ } from "@/lib/time";
+import { windUnitLabel } from "@/lib/units";
 
 interface Props {
   alerts: Alert[];
   tropical?: TropicalResponse | null;
+  prefs?: UserPreferences;
 }
 
 /**
@@ -17,7 +19,16 @@ interface Props {
  *     hurricane / tropical-storm watches & warnings, beach hazards.
  *   • NHC tropical outlook — any active named storm with a threat heuristic.
  */
-export default function AdvisoryBanner({ alerts, tropical }: Props) {
+export default function AdvisoryBanner({ alerts, tropical, prefs }: Props) {
+  const wu = prefs?.unitsWind ?? "kt";
+  // NHC reports max sustained wind in mph; convert to the user's preferred unit.
+  // Knots: mph * 0.868976. The "all" preference shows both.
+  const fmtTropicalWind = (mph: number): string => {
+    if (wu === "mph") return `${mph} mph`;
+    const kt = Math.round(mph * 0.868976);
+    if (wu === "all") return `${kt} kt / ${mph} mph`;
+    return `${kt} ${windUnitLabel(wu)}`;
+  };
   // Tropical threat: any system flagged threat-to-user (within 600 mi & NW-bound).
   const tropicalThreat = tropical?.activeSystems?.find(s => s.threatToUser);
 
@@ -88,7 +99,7 @@ export default function AdvisoryBanner({ alerts, tropical }: Props) {
               {tropicalThreat.classification} {tropicalThreat.name}
             </h3>
             <p style={{ margin: 0, fontSize: 13 }}>
-              {tropicalThreat.maxWindMph != null && <>{tropicalThreat.maxWindMph} mph · </>}
+              {tropicalThreat.maxWindMph != null && <>{fmtTropicalWind(tropicalThreat.maxWindMph)} · </>}
               {tropicalThreat.movement ?? "track pending"}
               {tropicalThreat.distanceMi != null && <> · {tropicalThreat.distanceMi.toLocaleString()} mi away</>}
             </p>

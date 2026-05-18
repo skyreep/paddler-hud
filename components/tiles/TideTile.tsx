@@ -1,15 +1,22 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { TideResponse } from "@/lib/types";
+import type { TideResponse, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
+import { fmtHeight, heightUnitLabel, ftToM } from "@/lib/units";
 
-export default function TideTile({ tides, stationNote, liveTideFt }: {
+export default function TideTile({ tides, stationNote, liveTideFt, prefs }: {
   tides: TideResponse;
   stationNote?: string;
   /** Live observed water level (ft, MLLW) from the same station. When present,
    *  the NOW marker uses this value so the chart agrees with the Right Now tile. */
   liveTideFt?: number | null;
+  prefs?: UserPreferences;
 }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const hu = prefs?.unitsHeight ?? "ft";
+  // Convert a height in feet to the user's preferred unit (for display
+  // strings already on the curve that aren't going through fmtHeight).
+  const convertH = (ft: number) => hu === "m" ? ftToM(ft) : ft;
   // "Now" position depends on real-time clock — compute on client only to avoid
   // hydration mismatch (page cache window is 5 min, clock keeps moving).
   const [nowTime, setNowTime] = useState<Date | null>(null);
@@ -68,7 +75,7 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
     <section className="tile">
       <div className="tile-head">
         <span className="tile-title">Today&apos;s Tides — {tides.stationName} ({tides.stationId})</span>
-        <span className="tile-meta">{tides.datum} · ft</span>
+        <span className="tile-meta">{tides.datum} · {heightUnitLabel(hu)}</span>
       </div>
       {stationNote && (
         <div style={{
@@ -152,7 +159,7 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
                 letterSpacing: ".3px",
               }}
             >
-              NOW · {nowDisplayFt.toFixed(1)} ft
+              NOW · {convertH(nowDisplayFt).toFixed(1)} {heightUnitLabel(hu)}
               {surgeAnomalyFt != null && (
                 <span style={{
                   marginLeft: 6,
@@ -160,7 +167,7 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
                   fontWeight: 600,
                 }}
                 title={`Surge anomaly: live water level is ${Math.abs(surgeAnomalyFt).toFixed(2)} ft ${surgeAnomalyFt > 0 ? "above" : "below"} the predicted curve. Usually wind / pressure driven.`}>
-                  {surgeAnomalyFt > 0 ? "+" : ""}{surgeAnomalyFt.toFixed(1)} Δ
+                  {surgeAnomalyFt > 0 ? "+" : ""}{convertH(surgeAnomalyFt).toFixed(1)} Δ
                 </span>
               )}
             </div>
@@ -178,9 +185,9 @@ export default function TideTile({ tides, stationNote, liveTideFt }: {
               {e.type === "H" ? "High" : "Low"}
             </div>
             <div className="num" style={{ fontWeight: 700, fontSize: 16 }}>
-              {fmtTime(e.time)}
+              {fmtTime(e.time, tf)}
             </div>
-            <div className="num" style={{ color: "var(--text-muted)", fontSize: 12 }}>{e.height.toFixed(1)} ft</div>
+            <div className="num" style={{ color: "var(--text-muted)", fontSize: 12 }}>{fmtHeight(e.height, hu)}</div>
           </div>
         ))}
       </div>

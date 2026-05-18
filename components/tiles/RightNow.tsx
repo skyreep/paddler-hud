@@ -1,5 +1,6 @@
-import type { WeatherNow, AirQualityResponse, NwsAttribution, WeatherObservation } from "@/lib/types";
+import type { WeatherNow, AirQualityResponse, NwsAttribution, WeatherObservation, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
+import { fmtTemp, fmtHeight, ktToMph, windUnitLabel } from "@/lib/units";
 
 interface Props {
   weather: WeatherNow;
@@ -10,14 +11,21 @@ interface Props {
   observation?: WeatherObservation | null;
   /** Resolved wind data source ("Fort Pulaski · NOAA CO-OPS · 4 min ago", etc.) */
   windSource?: string;
+  prefs?: UserPreferences;
 }
 
 function minutesAgo(iso: string): number {
   return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
 }
 
-export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution, observation, windSource }: Props) {
-  const updated = fmtTime(fetchedAt);
+export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, attribution, observation, windSource, prefs }: Props) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const tu = prefs?.unitsTemp ?? "F";
+  const wu = prefs?.unitsWind ?? "kt";
+  const hu = prefs?.unitsHeight ?? "ft";
+  const speedUnit = windUnitLabel(wu);
+  const dispSpeed = (kt: number) => wu === "mph" ? Math.round(ktToMph(kt)) : Math.round(kt);
+  const updated = fmtTime(fetchedAt, tf);
   // When METAR observation is feeding the tile, lead with "Observed X min ago"
   // so users know these are real measurements, not forecast for the next hour.
   const src = observation
@@ -40,11 +48,12 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
       }} className="phud-now-top">
         <div style={{ minWidth: 0 }}>
           <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 56, fontWeight: 700, lineHeight: 1, letterSpacing: -1.5 }}>
-            {Math.round(weather.tempF)}<sup style={{ fontSize: 20, color: "var(--text-muted)", fontWeight: 500 }}>°F</sup>
+            {fmtTemp(weather.tempF, tu).replace(/°[FC]$/, "")}
+            <sup style={{ fontSize: 20, color: "var(--text-muted)", fontWeight: 500 }}>°{tu}</sup>
           </div>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{weather.shortForecast}</div>
           <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 2 }}>
-            Feels like {Math.round(weather.feelsLikeF)}°F
+            Feels like {fmtTemp(weather.feelsLikeF, tu)}
           </div>
         </div>
 
@@ -52,14 +61,19 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
           <WindRose dirDeg={weather.windDirDeg} />
           <div>
             <div className="num" style={{ fontSize: 22, fontWeight: 700 }}>
-              {Math.round(weather.windSpeedKt)} <span style={{ color: "var(--text-muted)", fontSize: 14 }}>kt</span>
+              {dispSpeed(weather.windSpeedKt)} <span style={{ color: "var(--text-muted)", fontSize: 14 }}>{speedUnit}</span>
             </div>
             <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              {Math.round(weather.windSpeedMph)} mph · {weather.windDirCardinal} · {Math.round(weather.windDirDeg)}°
+              {/* Secondary line: when user prefers "all" or "kt", show mph as
+                  the secondary alternate; when user prefers "mph", show kt
+                  as the alternate so they still get both numbers. */}
+              {wu === "mph"
+                ? `${Math.round(weather.windSpeedKt)} kt`
+                : `${Math.round(weather.windSpeedMph)} mph`} · {weather.windDirCardinal} · {Math.round(weather.windDirDeg)}°
             </div>
             <span style={pill}>Force {weather.beaufortForce} — {weather.beaufortName}</span>
             {weather.windGustKt && (
-              <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 6 }}>Gusts to {Math.round(weather.windGustKt)} kt</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 6 }}>Gusts to {dispSpeed(weather.windGustKt)} {speedUnit}</div>
             )}
             {windSource && (
               <div style={{
@@ -75,9 +89,9 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14, fontSize: 13 }}>
         <Row label="Humidity"  value={weather.humidity != null ? `${weather.humidity}%` : "—"} />
-        <Row label="Dew point" value={weather.dewPointF != null ? `${Math.round(weather.dewPointF)}°F` : "—"} />
+        <Row label="Dew point" value={fmtTemp(weather.dewPointF, tu)} />
         <Row label="Precip"    value={precipLabel(weather.precipChancePct, weather.precipAmountIn)} />
-        <Row label="Live tide" value={liveTideFt != null ? `${liveTideFt.toFixed(1)} ft` : "—"} />
+        <Row label="Live tide" value={fmtHeight(liveTideFt, hu)} />
         <Row label="Air quality" value={
           airQuality?.available && airQuality.aqi != null
             ? <span className={`pill ${aqiClass(airQuality.aqi)}`}>{airQuality.category} · AQI {airQuality.aqi}</span>

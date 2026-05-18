@@ -1,5 +1,6 @@
-import type { WeatherHour, NwsAttribution } from "@/lib/types";
+import type { WeatherHour, NwsAttribution, UserPreferences } from "@/lib/types";
 import { STATION_TZ } from "@/lib/time";
+import { fmtTemp, fmtWind } from "@/lib/units";
 
 function iconFor(forecast: string) {
   const f = forecast.toLowerCase();
@@ -12,10 +13,14 @@ function iconFor(forecast: string) {
   return "🌤";
 }
 
-export default function HourlyTile({ hours, attribution }: {
+export default function HourlyTile({ hours, attribution, prefs }: {
   hours: WeatherHour[];
   attribution?: NwsAttribution;
+  prefs?: UserPreferences;
 }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const tu = prefs?.unitsTemp ?? "F";
+  const wu = prefs?.unitsWind ?? "kt";
   // Total expected precip across the entire window (typically 24 h).
   const totalIn = hours.reduce((sum, h) => sum + (h.precipAmountIn ?? 0), 0);
   // Peak hourly chance across the window — useful "will it rain at all" indicator.
@@ -74,14 +79,18 @@ export default function HourlyTile({ hours, attribution }: {
               borderRadius: 12, fontSize: 12,
             }}>
               <div style={{ color: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}>
-                {i === 0 ? "Now" : new Date(h.time).toLocaleTimeString("en-US", { hour: "numeric", timeZone: STATION_TZ })}
+                {i === 0 ? "Now" : new Date(h.time).toLocaleTimeString("en-US", {
+                  hour: tf === "24h" ? "2-digit" : "numeric",
+                  hour12: tf === "12h",
+                  timeZone: STATION_TZ,
+                })}
               </div>
               <div style={{ fontSize: 22, margin: "4px 0" }}>{iconFor(h.shortForecast)}</div>
               <div className="num" style={{ fontWeight: 700, fontSize: 14 }}>
-                {Math.round(h.tempF)}°
+                {fmtTemp(h.tempF, tu)}
               </div>
               <div className="num" style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
-                {Math.round(h.windKt)} kt
+                {fmtWind(h.windKt, wu)}
                 {h.windDirCardinal && <span style={{ marginLeft: 2 }}>{h.windDirCardinal}</span>}
               </div>
               <div style={{

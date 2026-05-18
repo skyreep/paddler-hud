@@ -1,12 +1,12 @@
-import type { AstroResponse } from "@/lib/types";
+import type { AstroResponse, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 
-function t(iso: string | null) {
-  if (!iso || iso === "—") return "—";
-  return fmtTime(iso);
-}
-
-export default function AstroTile({ astro }: { astro: AstroResponse }) {
+export default function AstroTile({ astro, prefs }: { astro: AstroResponse; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const t = (iso: string | null) => {
+    if (!iso || iso === "—") return "—";
+    return fmtTime(iso, tf);
+  };
   const dayLenHrs = Math.floor(astro.dayLengthMin / 60);
   const dayLenMin = astro.dayLengthMin % 60;
 

@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { WindResponse } from "@/lib/types";
+import type { WindResponse, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 import { beaufort } from "@/lib/beaufort";
+import { ktToMph, windUnitLabel } from "@/lib/units";
 
 function cardinalFromDeg(deg: number): string {
   const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -16,7 +17,14 @@ function cardinalFromDeg(deg: number): string {
  *  from instruments mounted right on the water. Includes a 6-hour speed +
  *  gust chart so paddlers can see whether wind is building or easing.
  */
-export default function WindNowTile({ wind }: { wind: WindResponse }) {
+export default function WindNowTile({ wind, prefs }: { wind: WindResponse; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const wu = prefs?.unitsWind ?? "kt";
+  // Display helper — most readouts in this tile are integer kt/mph values.
+  // For "all" the unit suffix shows just kt (the primary unit); the
+  // current-reading row renders a separate mph line below it.
+  const dispSpeed = (kt: number) => wu === "mph" ? Math.round(ktToMph(kt)) : Math.round(kt);
+  const speedUnit = windUnitLabel(wu);
   // Track "now" client-side. Computing minutesAgo() during render would
   // execute once on the server (during RSC pre-render) and again on the
   // client at hydration with a different Date.now(), producing different
@@ -93,18 +101,26 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span className="num" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1 }}>
-              {cur.speedKt.toFixed(0)}
+              {dispSpeed(cur.speedKt)}
             </span>
-            <span style={{ color: "var(--text-muted)", fontSize: 14 }}>kt</span>
+            <span style={{ color: "var(--text-muted)", fontSize: 14 }}>{speedUnit}</span>
             {cur.gustKt != null && cur.gustKt > cur.speedKt && (
               <span className="num" style={{
                 marginLeft: 8, fontSize: 14,
                 color: "var(--warn)", fontWeight: 700,
               }}>
-                gusts {cur.gustKt.toFixed(0)} kt
+                gusts {dispSpeed(cur.gustKt)} {speedUnit}
               </span>
             )}
           </div>
+          {wu === "all" && (
+            <div className="num" style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
+              {Math.round(ktToMph(cur.speedKt))} mph
+              {cur.gustKt != null && cur.gustKt > cur.speedKt && (
+                <> · gusts {Math.round(ktToMph(cur.gustKt))} mph</>
+              )}
+            </div>
+          )}
           <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
             {String(Math.round(cur.dirDeg)).padStart(3, "0")}° {cardinalFromDeg(cur.dirDeg)}
           </div>
@@ -174,7 +190,7 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
               background: "var(--bg-elev-2)",
               padding: "0 3px",
               lineHeight: 1.2,
-            }}>{kt} kt</span>
+            }}>{dispSpeed(kt)} {speedUnit}</span>
           ))}
           {/* X-axis time labels — start / middle / end of the window. */}
           <div style={{
@@ -185,9 +201,9 @@ export default function WindNowTile({ wind }: { wind: WindResponse }) {
             pointerEvents: "none",
             padding: "0 4px",
           }}>
-            <span>{fmtTime(obs[0].time)}</span>
-            <span>{fmtTime(obs[Math.floor(obs.length / 2)].time)}</span>
-            <span>{fmtTime(obs[obs.length - 1].time)}</span>
+            <span>{fmtTime(obs[0].time, tf)}</span>
+            <span>{fmtTime(obs[Math.floor(obs.length / 2)].time, tf)}</span>
+            <span>{fmtTime(obs[obs.length - 1].time, tf)}</span>
           </div>
         </div>
       </div>

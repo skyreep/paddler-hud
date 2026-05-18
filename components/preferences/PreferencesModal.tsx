@@ -10,13 +10,11 @@
 //   - Guests → localStorage only. A small note in the modal nudges them
 //     toward sign-in for cross-device sync.
 //
-// Which toggles actually DO anything yet:
-//   - Theme: yes — applied via the existing data-theme attribute pipeline,
-//     synced to localStorage so the pre-paint script in layout.tsx picks
-//     up the right theme on the next page load.
-//   - Time format, wind/temp/height units: persisted but not yet wired
-//     into tile rendering. That's chunk 2 of Phase 4 (the unit + time
-//     conversion sweep across all tiles).
+// All toggles are live: theme applies via the existing data-theme
+// pipeline; time format and unit prefs propagate through every tile that
+// renders unit-bearing values (RightNow, WindNowTile, TideTile, etc.).
+// For signed-in users the values are server-loaded into TopBar on each
+// page render, so changes show up on the next route transition.
 //
 // Portal'd to document.body for the same reason SignInModal is — the
 // topbar's backdrop-filter would otherwise clip the fullscreen overlay.
@@ -187,7 +185,6 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
             ]}
             onChange={(v) => updateOne("timeFormat", v)}
             disabled={saving}
-            preview="Display-only setting wires into tiles in a future update."
           />
         </Section>
 
@@ -201,7 +198,6 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
             ]}
             onChange={(v) => updateOne("unitsWind", v)}
             disabled={saving}
-            preview="Display-only setting wires into tiles in a future update."
           />
         </Section>
 
@@ -214,7 +210,6 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
             ]}
             onChange={(v) => updateOne("unitsTemp", v)}
             disabled={saving}
-            preview="Display-only setting wires into tiles in a future update."
           />
         </Section>
 
@@ -227,7 +222,6 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
             ]}
             onChange={(v) => updateOne("unitsHeight", v)}
             disabled={saving}
-            preview="Display-only setting wires into tiles in a future update."
           />
         </Section>
 

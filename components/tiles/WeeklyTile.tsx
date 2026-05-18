@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import type { WeatherDay, NwsAttribution } from "@/lib/types";
+import type { WeatherDay, NwsAttribution, UserPreferences } from "@/lib/types";
 import { STATION_TZ } from "@/lib/time";
+import { fToC, ktToMph, windUnitLabel } from "@/lib/units";
 
 function iconFor(forecast: string) {
   const f = forecast.toLowerCase();
@@ -17,9 +18,15 @@ function iconFor(forecast: string) {
 interface Props {
   days: WeatherDay[];
   attribution?: NwsAttribution;
+  prefs?: UserPreferences;
 }
 
-export default function WeeklyTile({ days, attribution }: Props) {
+export default function WeeklyTile({ days, attribution, prefs }: Props) {
+  const tu = prefs?.unitsTemp ?? "F";
+  const wu = prefs?.unitsWind ?? "kt";
+  const speedUnit = windUnitLabel(wu);
+  const dispTemp = (f: number) => tu === "C" ? Math.round(fToC(f)) : Math.round(f);
+  const dispWind = (kt: number) => wu === "mph" ? Math.round(ktToMph(kt)) : Math.round(kt);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   if (!days.length) return null;
 
@@ -37,8 +44,8 @@ export default function WeeklyTile({ days, attribution }: Props) {
       <div style={{ display: "grid", gap: 0, fontSize: 13 }}>
         {days.map((d, idx) => {
           const isOpen = openIdx === idx;
-          const hi = Math.round(d.hiF);
-          const lo = Math.round(d.loF);
+          const hi = dispTemp(d.hiF);
+          const lo = dispTemp(d.loF);
           const popPct = d.precipChancePct ?? 0;
           const amount = d.precipAmountIn;
           const sameTemps = hi === lo;
@@ -93,10 +100,10 @@ export default function WeeklyTile({ days, attribution }: Props) {
                     fontFamily: "'JetBrains Mono', ui-monospace, monospace",
                   }}>
                     {d.windSpeedKt != null && (
-                      <span>{d.windSpeedKt} kt{d.windDirCardinal ? ` ${d.windDirCardinal}` : ""}
+                      <span>{dispWind(d.windSpeedKt)} {speedUnit}{d.windDirCardinal ? ` ${d.windDirCardinal}` : ""}
                         {d.windGustKt != null && d.windGustKt > d.windSpeedKt && (
-                          <span style={{ color: "var(--text-faint)" }} title="Wind gusts in knots">
-                            {" "}· gusts {d.windGustKt} kt
+                          <span style={{ color: "var(--text-faint)" }} title={`Wind gusts in ${speedUnit}`}>
+                            {" "}· gusts {dispWind(d.windGustKt)} {speedUnit}
                           </span>
                         )}
                       </span>

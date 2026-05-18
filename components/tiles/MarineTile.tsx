@@ -1,5 +1,6 @@
-import type { BuoyResponse } from "@/lib/types";
+import type { BuoyResponse, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
+import { fmtHeight, fmtTemp, ftToM } from "@/lib/units";
 
 /**
  * Marine conditions tile. The wave visualization is now data-driven:
@@ -15,7 +16,7 @@ function cardinalFromDeg(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-function WaveViz({ heightFt, periodSec }: { heightFt: number | null; periodSec: number | null }) {
+function WaveViz({ heightFt, periodSec, heightUnit = "ft" }: { heightFt: number | null; periodSec: number | null; heightUnit?: "ft" | "m" }) {
   // One wave shape, two explicit measurement annotations:
   //  HEIGHT (orange) — vertical bracket measuring crest-to-trough on the right
   //  PERIOD (teal)   — horizontal bracket measuring one full wavelength on the
@@ -83,7 +84,9 @@ function WaveViz({ heightFt, periodSec }: { heightFt: number | null; periodSec: 
         <text x={heightBarX + 8} y={mid + 3} textAnchor="start"
               fontSize="11" fontFamily="JetBrains Mono, ui-monospace, monospace"
               fontWeight="700" fill={colorHeight}>
-          {heightFt != null ? `${heightFt.toFixed(1)} ft` : "—"}
+          {heightFt != null
+            ? `${(heightUnit === "m" ? ftToM(heightFt) : heightFt).toFixed(1)} ${heightUnit}`
+            : "—"}
         </text>
 
         {/* PERIOD bracket below (teal) — measures one full wavelength */}
@@ -150,12 +153,15 @@ function Compass({ fromDeg }: { fromDeg: number | null }) {
   );
 }
 
-export default function MarineTile({ buoy }: { buoy: BuoyResponse }) {
+export default function MarineTile({ buoy, prefs }: { buoy: BuoyResponse; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const tu = prefs?.unitsTemp ?? "F";
+  const hu = prefs?.unitsHeight ?? "ft";
   const title = buoy.source === "NDBC"
     ? `Marine · NDBC ${buoy.buoyId}`
     : "Marine · Modelled (Open-Meteo)";
   const subtitle = buoy.observedAt
-    ? fmtTime(buoy.observedAt)
+    ? fmtTime(buoy.observedAt, tf)
     : "";
 
   return (
@@ -174,13 +180,22 @@ export default function MarineTile({ buoy }: { buoy: BuoyResponse }) {
         gap: 10,
         alignItems: "stretch",
       }}>
-        <Stat label="Wave height" value={buoy.waveHeightFt} unit="ft" decimals={1} />
-        <Stat label="Period"      value={buoy.dominantPeriodSec} unit="s" decimals={0} />
-        <Stat label="Sea temp"    value={buoy.seaTempF} unit="°F" decimals={0} />
+        <Stat
+          label="Wave height"
+          text={fmtHeight(buoy.waveHeightFt, hu)}
+        />
+        <Stat
+          label="Period"
+          text={buoy.dominantPeriodSec == null ? "—" : `${buoy.dominantPeriodSec} s`}
+        />
+        <Stat
+          label="Sea temp"
+          text={fmtTemp(buoy.seaTempF, tu)}
+        />
         <CompassCell fromDeg={buoy.meanWaveDirDeg} />
       </div>
 
-      <WaveViz heightFt={buoy.waveHeightFt} periodSec={buoy.dominantPeriodSec} />
+      <WaveViz heightFt={buoy.waveHeightFt} periodSec={buoy.dominantPeriodSec} heightUnit={hu} />
 
       {buoy.source !== "NDBC" && (
         <div style={{
@@ -194,10 +209,9 @@ export default function MarineTile({ buoy }: { buoy: BuoyResponse }) {
   );
 }
 
-function Stat({ label, value, unit, decimals }: {
-  label: string; value: number | null; unit: string; decimals: number;
-}) {
-  const text = value == null ? "—" : value.toFixed(decimals);
+/** Generic stat cell — accepts a pre-formatted string (with units already
+ *  baked in by the helper) so each callsite controls its own conversions. */
+function Stat({ label, text }: { label: string; text: string }) {
   return (
     <div style={{
       background: "var(--bg-elev-2)",
@@ -210,10 +224,7 @@ function Stat({ label, value, unit, decimals }: {
         fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px",
       }}>{label}</div>
       <div className="num" style={{ fontWeight: 700, fontSize: 20, marginTop: 2 }}>
-        {text}<span style={{
-          color: "var(--text-muted)", fontSize: 12,
-          marginLeft: 3, fontWeight: 500,
-        }}>{unit}</span>
+        {text}
       </div>
     </div>
   );

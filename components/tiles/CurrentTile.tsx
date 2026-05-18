@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { CurrentResponse } from "@/lib/types";
+import type { CurrentResponse, UserPreferences } from "@/lib/types";
 import { fmtTime } from "@/lib/time";
 
-export default function CurrentTile({ currents }: { currents: CurrentResponse }) {
+// Currents are always shown in knots regardless of the user's wind-units
+// preference — knots are the marine-standard unit for water velocity and
+// mph would feel out of place even to a user who prefers mph for wind.
+export default function CurrentTile({ currents, prefs }: { currents: CurrentResponse; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
   const [nowTime, setNowTime] = useState<Date | null>(null);
   useEffect(() => {
     setNowTime(new Date());
@@ -150,14 +154,14 @@ export default function CurrentTile({ currents }: { currents: CurrentResponse })
         <Row label="Current state" value={stateLabel} highlight />
         {currents.maxFlood && (
           <Row label="Max flood"
-               value={`+${currents.maxFlood.velocity.toFixed(1)} kt · ${fmtTime(currents.maxFlood.time)}`} />
+               value={`+${currents.maxFlood.velocity.toFixed(1)} kt · ${fmtTime(currents.maxFlood.time, tf)}`} />
         )}
         {stateNextSlackIso && (
-          <Row label="Next slack" value={fmtTime(stateNextSlackIso)} />
+          <Row label="Next slack" value={fmtTime(stateNextSlackIso, tf)} />
         )}
         {currents.maxEbb && (
           <Row label="Max ebb"
-               value={`${currents.maxEbb.velocity.toFixed(1)} kt · ${fmtTime(currents.maxEbb.time)}`} />
+               value={`${currents.maxEbb.velocity.toFixed(1)} kt · ${fmtTime(currents.maxEbb.time, tf)}`} />
         )}
       </div>
 

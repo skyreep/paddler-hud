@@ -1,4 +1,5 @@
-import type { RiverGauge } from "@/lib/types";
+import type { RiverGauge, UserPreferences } from "@/lib/types";
+import { heightUnitLabel, ftToM } from "@/lib/units";
 
 // Paddler-relevant labels covering the full flow spectrum: drought-low through
 // flood. "Normal" now means within the typical seasonal range (USGS P25-P75),
@@ -59,7 +60,9 @@ function flowContextLine(g: RiverGauge): string | null {
   return parts.join(" ") + ".";
 }
 
-export default function RiversTile({ gauges }: { gauges: RiverGauge[] }) {
+export default function RiversTile({ gauges, prefs }: { gauges: RiverGauge[]; prefs?: UserPreferences }) {
+  const hu = prefs?.unitsHeight ?? "ft";
+  const convertH = (ft: number) => hu === "m" ? ftToM(ft) : ft;
   return (
     <section className="tile">
       <div className="tile-head">
@@ -89,13 +92,13 @@ export default function RiversTile({ gauges }: { gauges: RiverGauge[] }) {
                 </div>
                 <div className="num" style={{ color: "var(--text-faint)", fontSize: 11, marginTop: 2 }}>
                   USGS {g.siteId}
-                  {g.floodStageFt != null && <> · Flood {g.floodStageFt} ft</>}
+                  {g.floodStageFt != null && <> · Flood {convertH(g.floodStageFt).toFixed(g.floodStageFt < 10 ? 1 : 0)} {heightUnitLabel(hu)}</>}
                   {g.flowPercentile != null && <> · P{g.flowPercentile}</>}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div className="num" style={{ fontWeight: 700, fontSize: 16 }}>
-                  {g.stageFt != null ? `${g.stageFt.toFixed(2)} ft` : "—"}
+                  {g.stageFt != null ? `${convertH(g.stageFt).toFixed(2)} ${heightUnitLabel(hu)}` : "—"}
                 </div>
                 <div className="num" style={{
                   fontSize: 12,
@@ -107,7 +110,7 @@ export default function RiversTile({ gauges }: { gauges: RiverGauge[] }) {
                     : "var(--good)",
                 }}>
                   {g.change24hFt != null
-                    ? `${g.change24hFt >= 0 ? "+" : ""}${g.change24hFt.toFixed(2)} (24h)`
+                    ? `${g.change24hFt >= 0 ? "+" : ""}${convertH(g.change24hFt).toFixed(2)} ${heightUnitLabel(hu)} (24h)`
                     : "—"}
                 </div>
               </div>

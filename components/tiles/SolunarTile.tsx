@@ -1,11 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { SolunarPeriod } from "@/lib/types";
+import type { SolunarPeriod, UserPreferences } from "@/lib/types";
 import { fmtTime, stationDayStart } from "@/lib/time";
-
-function fmtRange(start: string, end: string): string {
-  return `${fmtTime(start)} – ${fmtTime(end)}`;
-}
 
 /** Major / minor solunar feeding periods for the day, computed from the moon's
  *  position. Popular with kayak anglers — fish activity peaks during these
@@ -14,7 +10,9 @@ function fmtRange(start: string, end: string): string {
  *  Major periods (≈ 2 hours): moon overhead, moon underfoot. ★★ best.
  *  Minor periods (≈ 1 hour):  moonrise, moonset. ★ secondary.
  */
-export default function SolunarTile({ periods }: { periods: SolunarPeriod[] }) {
+export default function SolunarTile({ periods, prefs }: { periods: SolunarPeriod[]; prefs?: UserPreferences }) {
+  const tf = prefs?.timeFormat ?? "12h";
+  const fmtRange = (start: string, end: string) => `${fmtTime(start, tf)} – ${fmtTime(end, tf)}`;
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
@@ -47,7 +45,11 @@ export default function SolunarTile({ periods }: { periods: SolunarPeriod[] }) {
       }}>
         {[0, 3, 6, 9, 12, 15, 18, 21, 24].map(h => {
           const isQuarter = h % 6 === 0;
-          const label = h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : h === 24 ? "12a" : `${h - 12}p`;
+          // Hour-of-day labels along the timeline. 12h mode uses a/p
+          // suffixes; 24h mode shows bare 0-24 numbers.
+          const label = tf === "24h"
+            ? String(h)
+            : h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : h === 24 ? "12a" : `${h - 12}p`;
           return (
             <span key={h} style={{
               position: "absolute",
@@ -145,7 +147,7 @@ export default function SolunarTile({ periods }: { periods: SolunarPeriod[] }) {
               <div>
                 <div style={{ fontWeight: 600 }}>{p.centerLabel}</div>
                 <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                  Centered at {fmtTime(p.centerTime)}
+                  Centered at {fmtTime(p.centerTime, tf)}
                   {isActive && <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 700 }}>· active now</span>}
                 </div>
               </div>

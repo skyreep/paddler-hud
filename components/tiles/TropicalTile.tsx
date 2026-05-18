@@ -1,6 +1,15 @@
-import type { TropicalResponse } from "@/lib/types";
+import type { TropicalResponse, UserPreferences } from "@/lib/types";
+import { windUnitLabel } from "@/lib/units";
 
-export default function TropicalTile({ tropical }: { tropical: TropicalResponse }) {
+export default function TropicalTile({ tropical, prefs }: { tropical: TropicalResponse; prefs?: UserPreferences }) {
+  const wu = prefs?.unitsWind ?? "kt";
+  // NHC reports max sustained wind in mph; convert to user pref.
+  const fmtTropicalWind = (mph: number): string => {
+    if (wu === "mph") return `${mph} mph`;
+    const kt = Math.round(mph * 0.868976);
+    if (wu === "all") return `${kt} kt / ${mph} mph`;
+    return `${kt} ${windUnitLabel(wu)}`;
+  };
   // Hide entirely off-season unless there's an active system or a high-chance disturbance.
   const hasActivity =
     tropical.activeSystems.length > 0 ||
@@ -40,7 +49,7 @@ export default function TropicalTile({ tropical }: { tropical: TropicalResponse 
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{s.classification} {s.name}</div>
             <div style={{ color: s.threatToUser ? "var(--bad)" : "var(--text)", fontWeight: 600, fontSize: 13 }}>
-              {s.maxWindMph != null ? `${s.maxWindMph} mph` : "—"}
+              {s.maxWindMph != null ? fmtTropicalWind(s.maxWindMph) : "—"}
               {s.movement && <> · Moving {s.movement}</>}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
