@@ -80,13 +80,19 @@ export default function TopBar({ locationName, stationKey, currentUser, location
           background: "var(--bg-elev)",
           borderBottom: "1px solid var(--border-soft)",
           padding: "10px 14px",
+          // Pad for iOS safe-area on the top (notch / dynamic island) AND
+          // the right (landscape orientation pushes content under the
+          // notch otherwise). Without the right inset the sign-in pill
+          // hangs off the edge on iPhone landscape.
           paddingTop: "calc(10px + env(safe-area-inset-top))",
+          paddingRight: "calc(14px + env(safe-area-inset-right))",
+          paddingLeft: "calc(14px + env(safe-area-inset-left))",
           display: "flex", alignItems: "center", gap: 10,
           backdropFilter: "saturate(180%) blur(12px)",
           WebkitBackdropFilter: "saturate(180%) blur(12px)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16, flexShrink: 0 }}>
           <div style={{
             width: 28, height: 28,
             background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
@@ -98,7 +104,9 @@ export default function TopBar({ locationName, stationKey, currentUser, location
               <path d="M2 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0 4 2 6 0" stroke="white" strokeWidth="2.2" strokeLinecap="round" opacity=".6"/>
             </svg>
           </div>
-          TIDEVISOR
+          {/* Wordmark hidden on narrow screens (see .phud-wordmark in globals.css)
+              so the logo + location pill + buttons all fit on iPhone widths. */}
+          <span className="phud-wordmark">TIDEVISOR</span>
         </div>
 
         <button onClick={() => setLocOpen(true)} style={pillBtn} aria-label="Change location">
@@ -173,6 +181,12 @@ const pillBtn: React.CSSProperties = {
   border: "1px solid var(--border-soft)",
   borderRadius: 999, color: "var(--text)",
   fontWeight: 600, fontSize: 13,
+  // min-width: 0 lets the pill shrink below its content width on narrow
+  // viewports (the text span already truncates with ellipsis). Without
+  // this, the pill stays at its intrinsic width and pushes everything
+  // after it (icon buttons + sign-in pill) off the right edge of the
+  // viewport on iPhone-sized screens.
+  minWidth: 0,
   maxWidth: 200, cursor: "pointer",
   fontFamily: "inherit",
 };

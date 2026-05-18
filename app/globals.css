@@ -84,6 +84,14 @@ body {
 @media (min-width: 1280px) {
   .hud-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
+
+/* TIDEVISOR wordmark in the topbar hides on phones — the logo carries
+   enough brand at narrow widths, and the saved space lets the location
+   pill + buttons + sign-in pill all fit without overflow. Threshold is
+   ~iPhone 14 portrait width with a little headroom. */
+@media (max-width: 480px) {
+  .phud-wordmark { display: none; }
+}
 .tile-head {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 10px;
