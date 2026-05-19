@@ -35,15 +35,22 @@ jobs:
             echo "CRON_SECRET is not set in GitHub Actions secrets."
             exit 1
           fi
-          response=$(curl -sS -w "\n%{http_code}" -X POST \
-            "${APP_BASE_URL}/api/daily-briefing" \
+          # -L follows redirects (tidevisor.com may redirect to www.* or
+          # apply a trailing-slash redirect). --location-trusted keeps the
+          # Authorization header on the redirect target — required when
+          # the redirect is cross-host (apex → www), since curl normally
+          # strips auth headers in that case for security.
+          # -w captures the final effective URL + status so the logs
+          # tell us exactly where the request landed.
+          response=$(curl -sS -L --location-trusted \
+            -w "\nFINAL_URL=%{url_effective}\nHTTP_STATUS=%{http_code}" \
+            -X POST "${APP_BASE_URL}/api/daily-briefing" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             --max-time 120)
-          body=$(echo "$response" | head -n -1)
-          status=$(echo "$response" | tail -n 1)
-          echo "HTTP status: $status"
-          echo "Response: $body"
+          echo "Response:"
+          echo "$response"
+          status=$(echo "$response" | grep -oP 'HTTP_STATUS=\K\d+' | tail -1)
           if [ "$status" -ne 200 ]; then
-            echo "Briefing endpoint returned non-200; failing the job."
+            echo "Briefing endpoint returned $status; failing the job."
             exit 1
           fi
