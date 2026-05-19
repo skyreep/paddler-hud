@@ -17,15 +17,16 @@ import type {
 } from "@/lib/types";
 
 /** Subset of UserPreferences that can be sent over the wire from the
- *  client. Any field omitted is left alone in the DB. Tile config edits
- *  will arrive in Phase 4 chunk 2 — for now we only accept the simple
- *  scalar prefs. */
+ *  client. Any field omitted is left alone in the DB. */
 export interface PreferencesPatch {
   theme?: ThemeMode;
   unitsWind?: WindUnits;
   unitsTemp?: TempUnits;
   unitsHeight?: HeightUnits;
   timeFormat?: TimeFormatPref;
+  dailyBriefingEnabled?: boolean;
+  /** 0-23 in America/New_York. Validated against the DB check constraint. */
+  dailyBriefingHour?: number;
 }
 
 export interface UpdatePreferencesResult {
@@ -65,6 +66,18 @@ export async function updatePreferences(
   if (patch.unitsTemp !== undefined) row.units_temp = patch.unitsTemp;
   if (patch.unitsHeight !== undefined) row.units_height = patch.unitsHeight;
   if (patch.timeFormat !== undefined) row.time_format = patch.timeFormat;
+  if (patch.dailyBriefingEnabled !== undefined) {
+    row.daily_briefing_enabled = patch.dailyBriefingEnabled;
+  }
+  if (patch.dailyBriefingHour !== undefined) {
+    // Clamp client-side input before the DB does — gives a cleaner error
+    // path than letting the check constraint reject the row.
+    const h = Math.round(patch.dailyBriefingHour);
+    if (!Number.isFinite(h) || h < 0 || h > 23) {
+      return { ok: false, error: "Briefing hour must be between 0 and 23." };
+    }
+    row.daily_briefing_hour = h;
+  }
   row.updated_at = new Date().toISOString();
 
   // Upsert handles the rare case where the profile trigger didn't run
@@ -73,7 +86,10 @@ export async function updatePreferences(
   const { data: saved, error: saveError } = await supabase
     .from("user_preferences")
     .upsert(row, { onConflict: "user_id" })
-    .select("theme, units_wind, units_temp, units_height, time_format, tile_config, updated_at")
+    .select(
+      "theme, units_wind, units_temp, units_height, time_format, " +
+        "tile_config, daily_briefing_enabled, daily_briefing_hour, updated_at",
+    )
     .single();
 
   if (saveError || !saved) {
@@ -92,6 +108,8 @@ export async function updatePreferences(
       unitsHeight: saved.units_height,
       timeFormat: saved.time_format,
       tileConfig: (saved.tile_config ?? {}) as UserPreferences["tileConfig"],
+      dailyBriefingEnabled: Boolean(saved.daily_briefing_enabled),
+      dailyBriefingHour: Number(saved.daily_briefing_hour ?? 6),
       updatedAt: String(saved.updated_at ?? new Date().toISOString()),
     },
   };

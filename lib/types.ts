@@ -384,5 +384,11 @@ export interface UserPreferences {
   unitsHeight: HeightUnits;
   timeFormat: TimeFormatPref;
   tileConfig: TileConfig;
+  /** Send a daily summary email of today's conditions. Off by default. */
+  dailyBriefingEnabled: boolean;
+  /** Hour-of-day (0-23, in America/New_York) when the daily briefing is
+   *  sent. Only meaningful when dailyBriefingEnabled is true. Default 6
+   *  (6am Eastern). */
+  dailyBriefingHour: number;
   updatedAt: string;
 }

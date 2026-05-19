@@ -225,6 +225,46 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
           />
         </Section>
 
+        {/* Daily briefing email is signed-in only — there's nowhere to
+            send mail for a guest. Hide the section entirely rather than
+            showing a disabled control. */}
+        {isSignedIn && (
+          <Section label="Daily briefing email">
+            <Segmented
+              value={prefs.dailyBriefingEnabled ? "on" : "off"}
+              options={[
+                { value: "off", label: "Off" },
+                { value: "on", label: "On" },
+              ]}
+              onChange={(v) => updateOne("dailyBriefingEnabled", v === "on")}
+              disabled={saving}
+            />
+            {prefs.dailyBriefingEnabled && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <select
+                    value={prefs.dailyBriefingHour}
+                    onChange={(e) => updateOne("dailyBriefingHour", Number(e.target.value))}
+                    disabled={saving}
+                    style={briefingHourSelect}
+                    aria-label="Send time"
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>
+                        Send at {formatHourLabel(h, prefs.timeFormat)} Eastern
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6, lineHeight: 1.5 }}>
+                  Short daily summary of your primary location: tides, wind,
+                  weather, alerts. Sent to your account email.
+                </div>
+              </>
+            )}
+          </Section>
+        )}
+
         <p style={{ fontSize: 11, color: "var(--text-faint)", margin: "16px 0 0", textAlign: "center" }}>
           Changes save automatically.
         </p>
@@ -362,3 +402,21 @@ const notice: React.CSSProperties = {
   border: "1px solid var(--border-soft)", borderRadius: 10,
   fontSize: 13, color: "var(--text)",
 };
+const briefingHourSelect: React.CSSProperties = {
+  display: "block", width: "100%", padding: "10px 12px",
+  background: "var(--bg-elev-2)", color: "var(--text)",
+  border: "1px solid var(--border-soft)", borderRadius: 10,
+  fontSize: 14, fontFamily: "inherit",
+  boxSizing: "border-box",
+  cursor: "pointer",
+};
+
+/** Hour-of-day formatter that respects the user's 12h/24h preference.
+ *  Used by the daily-briefing send-time dropdown. */
+function formatHourLabel(hour: number, format: TimeFormatPref): string {
+  if (format === "24h") return `${String(hour).padStart(2, "0")}:00`;
+  if (hour === 0) return "12:00 AM";
+  if (hour < 12) return `${hour}:00 AM`;
+  if (hour === 12) return "12:00 PM";
+  return `${hour - 12}:00 PM`;
+}

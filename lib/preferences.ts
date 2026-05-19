@@ -20,8 +20,9 @@ import type {
 } from "@/lib/types";
 
 /** Defaults match the user_preferences column defaults in
- *  supabase/migrations/001_initial_schema.sql, so a guest's UI looks
- *  identical to a brand-new signed-in user's UI. */
+ *  supabase/migrations/001_initial_schema.sql (+ 003 for the daily
+ *  briefing fields), so a guest's UI looks identical to a brand-new
+ *  signed-in user's UI. */
 export const DEFAULT_PREFERENCES: UserPreferences = {
   theme: "auto",
   unitsWind: "kt",
@@ -29,6 +30,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   unitsHeight: "ft",
   timeFormat: "12h",
   tileConfig: {},
+  dailyBriefingEnabled: false,
+  dailyBriefingHour: 6,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -53,7 +56,10 @@ export async function loadPreferences(): Promise<LoadedPreferences> {
 
   const { data: row, error } = await supabase
     .from("user_preferences")
-    .select("theme, units_wind, units_temp, units_height, time_format, tile_config, updated_at")
+    .select(
+      "theme, units_wind, units_temp, units_height, time_format, " +
+        "tile_config, daily_briefing_enabled, daily_briefing_hour, updated_at",
+    )
     .eq("user_id", userData.user.id)
     .maybeSingle();
 
@@ -77,6 +83,8 @@ export async function loadPreferences(): Promise<LoadedPreferences> {
       unitsHeight: coerceHeightUnits(row.units_height),
       timeFormat: coerceTimeFormat(row.time_format),
       tileConfig: coerceTileConfig(row.tile_config),
+      dailyBriefingEnabled: Boolean(row.daily_briefing_enabled),
+      dailyBriefingHour: coerceBriefingHour(row.daily_briefing_hour),
       updatedAt: String(row.updated_at ?? new Date().toISOString()),
     },
     source: "user",
@@ -109,4 +117,14 @@ function coerceTimeFormat(v: unknown): TimeFormatPref {
 function coerceTileConfig(v: unknown): TileConfig {
   if (!v || typeof v !== "object") return {};
   return v as TileConfig;
+}
+/** Clamp to 0-23. The DB check constraint enforces this too, but coercing
+ *  here guards against garbage that somehow snuck past (or default rows
+ *  on accounts that pre-date migration 003). */
+function coerceBriefingHour(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return DEFAULT_PREFERENCES.dailyBriefingHour;
+  const rounded = Math.round(n);
+  if (rounded < 0 || rounded > 23) return DEFAULT_PREFERENCES.dailyBriefingHour;
+  return rounded;
 }
