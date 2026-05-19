@@ -434,7 +434,13 @@ function renderHtml(data: BriefingData, ctx: BriefingContext): string {
       </div>
       <div style="margin-top:8px;font-size:11px;color:${COLOR_FAINT};">
         <a href="${escapeAttr(data.settingsUrl)}" style="color:${COLOR_FAINT};text-decoration:underline;">Manage briefing settings</a>
-        &nbsp;·&nbsp; Tidevisor is a product of the Georgia Coast.
+        &nbsp;·&nbsp;
+        <a href="${escapeAttr(data.appUrl)}/privacy" style="color:${COLOR_FAINT};text-decoration:underline;">Privacy</a>
+        &nbsp;·&nbsp;
+        <a href="${escapeAttr(data.appUrl)}/terms" style="color:${COLOR_FAINT};text-decoration:underline;">Terms</a>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:${COLOR_FAINT};">
+        Tidevisor is a product of the Georgia Coast.
       </div>
     </div>
 
@@ -647,6 +653,8 @@ function renderText(data: BriefingData, ctx: BriefingContext): string {
   lines.push(`Open dashboard: ${data.appUrl}`);
   lines.push(`Share with a friend: forward this email, or share ${data.appUrl}`);
   lines.push(`Manage briefing settings: ${data.settingsUrl}`);
+  lines.push(`Privacy: ${data.appUrl}/privacy`);
+  lines.push(`Terms: ${data.appUrl}/terms`);
   lines.push("");
   lines.push("Tidevisor is a product of the Georgia Coast.");
 

@@ -238,6 +238,12 @@ export default function SignInModal({ open, onClose }: Props) {
             <p style={{ fontSize: 11, color: "var(--text-faint)", margin: "14px 0 0", textAlign: "center" }}>
               No password to remember — we&apos;ll email you a one-time sign-in link.
             </p>
+            <p style={{ fontSize: 10, color: "var(--text-faint)", margin: "10px 0 0", textAlign: "center", lineHeight: 1.5 }}>
+              By signing in you agree to our{" "}
+              <a href="/terms" style={{ color: "var(--text-muted)" }}>Terms</a>
+              {" "}and{" "}
+              <a href="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</a>.
+            </p>
           </>
         )}
       </div>

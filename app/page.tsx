@@ -163,7 +163,12 @@ export default async function Home({
         }}>
           Data: NOAA CO-OPS, NWS, USGS, NHC, EPA AirNow, Open-Meteo (UV + marine model), SunCalc.<br />
           Always verify conditions with official sources before launching.
-          <div style={{ marginTop: 10, color: "var(--text-faint)", opacity: 0.85 }}>
+          <div style={{ marginTop: 10 }}>
+            <a href="/privacy" style={{ color: "var(--text-muted)", textDecoration: "none", marginRight: 10 }}>Privacy</a>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <a href="/terms" style={{ color: "var(--text-muted)", textDecoration: "none", marginLeft: 10 }}>Terms</a>
+          </div>
+          <div style={{ marginTop: 8, color: "var(--text-faint)", opacity: 0.85 }}>
             Tidevisor is a product of the Georgia Coast.
           </div>
         </div>
