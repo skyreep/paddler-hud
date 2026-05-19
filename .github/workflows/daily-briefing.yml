@@ -1,0 +1,49 @@
+name: Daily briefing cron
+
+# Fires hourly at minute 5 (slight offset from :00 so we don't compete
+# with every other GitHub Actions cron in the world for runner capacity).
+# The endpoint itself computes the current Eastern hour and filters
+# opted-in users for that hour, so the exact minute doesn't matter.
+#
+# Note on reliability: GitHub Actions cron jobs can be delayed up to
+# ~15 minutes during high-load windows (a documented GitHub limitation).
+# Acceptable for a daily briefing — users expect "around 6am", not
+# 6:00:00 sharp. If precision ever matters, Vercel Pro's cron or a paid
+# scheduler like Upstash QStash gets sub-minute reliability.
+#
+# Required secrets (Settings → Secrets and variables → Actions):
+#   CRON_SECRET — must match the same env var set on Vercel/Resend route.
+#   APP_BASE_URL — optional; defaults to https://tidevisor.com if unset.
+
+on:
+  schedule:
+    - cron: '5 * * * *'
+  # Allow manual trigger from the Actions UI for testing.
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call daily briefing endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://tidevisor.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET is not set in GitHub Actions secrets."
+            exit 1
+          fi
+          response=$(curl -sS -w "\n%{http_code}" -X POST \
+            "${APP_BASE_URL}/api/daily-briefing" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 120)
+          body=$(echo "$response" | head -n -1)
+          status=$(echo "$response" | tail -n 1)
+          echo "HTTP status: $status"
+          echo "Response: $body"
+          if [ "$status" -ne 200 ]; then
+            echo "Briefing endpoint returned non-200; failing the job."
+            exit 1
+          fi
