@@ -227,20 +227,50 @@ export async function fetchCurrents(stationId: string): Promise<CurrentResponse>
 }
 
 /** Try each wind source (CO-OPS station or NDBC buoy) in declared order
- *  until one returns non-empty wind data. Subordinate CO-OPS tide stations
- *  frequently lack wind sensors, so each location lists its preferred local
- *  options first and a regional fallback last. */
+ *  until one returns FRESH wind data — not just "non-empty." Subordinate
+ *  CO-OPS tide stations frequently lack wind sensors, and even stations
+ *  with sensors sometimes return ancient observations (sensor offline
+ *  for a day, the buoy hasn't transmitted recently, etc.). Without this
+ *  freshness gate, the first source in the chain "wins" with whatever
+ *  stale junk it returns and the runtime never tries the next source.
+ *
+ *  Thresholds mirror lib/wind-resolver.ts:
+ *   - CO-OPS: 60 min (station samples every 6 min, so anything older
+ *     than an hour means the feed is sick)
+ *   - NDBC:  120 min (some nearshore buoys only sample every 30-60 min)
+ *
+ *  Sensor-stuck detection (speed=0 while gust>0) is also rejected here
+ *  so the chain walks past clearly broken anemometers.
+ *
+ *  If nothing in the chain returns fresh data, we return the most
+ *  recent stale response we saw (so the UI can still show *something*
+ *  with a "stale" indicator), falling back to a fully-empty shape only
+ *  when every source was completely offline. */
 export async function fetchWindWithFallback(
   sources: WindStationRef[],
   hours = 6,
 ): Promise<WindResponse> {
+  let bestStale: WindResponse | null = null;
   for (const src of sources) {
     const r = src.kind === "ndbc"
       ? await fetchNdbcWindHistory(src.id, hours)
       : await fetchWind(src.id, hours);
-    if (r.observations.length > 0) return r;
+    if (!r.latest || r.observations.length === 0) continue;
+    const ageMs = Date.now() - Date.parse(r.latest.time);
+    const ageMin = ageMs / 60000;
+    const speedKt = r.latest.speedKt;
+    const gustKt = r.latest.gustKt ?? 0;
+    const sensorStuck = speedKt === 0 && gustKt > 0;
+    const freshMin = src.kind === "ndbc" ? 120 : 60;
+    if (!sensorStuck && ageMin <= freshMin) return r;
+    // Remember the freshest stale response so we have something to
+    // render if no source in the chain is live.
+    if (!bestStale || ageMin < ((Date.now() - Date.parse(bestStale.latest!.time)) / 60000)) {
+      bestStale = r;
+    }
   }
-  // Nothing worked — return an empty shape so the UI shows the offline state.
+  if (bestStale) return bestStale;
+  // Nothing worked at all — return an empty shape so the UI shows the offline state.
   const first = sources[0];
   return {
     stationId: first?.id ?? "",

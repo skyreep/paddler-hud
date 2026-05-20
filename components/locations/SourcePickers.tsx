@@ -1,5 +1,4 @@
 "use client";
-
 // Reusable per-field source pickers, shared between AddLocationWizard
 // (creating a new location) and EditLocationSourcesModal (changing the
 // data sources on an existing one).
@@ -16,6 +15,7 @@ import type {
   TideCandidate,
   WindCandidate,
 } from "@/lib/location-resolver";
+import type { WindStationRef } from "@/lib/types";
 
 /** Wind-source picker uses a composite value like "coops:8670870" or
  *  "ndbc:41008" so a single <select> can carry both source kinds. The
@@ -61,10 +61,48 @@ export function marineZoneOption(c: MarineZoneCandidate): { value: string; label
   };
 }
 export function windOption(c: WindCandidate): { value: string; label: string } {
+  // Prepend a liveness indicator so the user can see at a glance which
+  // sources are actually reporting fresh data. "○" is a deliberate
+  // visual placeholder for un-probed candidates (everything past the
+  // top-N cutoff) — better than hiding the distinction.
+  const tag =
+    c.liveness === "live"    ? `🟢 Live${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}` :
+    c.liveness === "stale"   ? `🟡 Stale${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}` :
+    c.liveness === "offline" ? "⚪ Offline" :
+                                "○";
   return {
     value: encodeWindValue(c.kind, c.id),
-    label: `${c.name} (${c.id}) — ${c.distanceMi.toFixed(1)} mi · ${c.kind === "coops" ? "CO-OPS" : "NDBC buoy"}`,
+    label: `${tag} · ${c.name} (${c.id}) — ${c.distanceMi.toFixed(1)} mi · ${c.kind === "coops" ? "CO-OPS" : "NDBC buoy"}`,
   };
+}
+
+function formatAge(min: number): string {
+  if (min < 60) return `${Math.round(min)} min ago`;
+  const hr = min / 60;
+  if (hr < 24) return `${hr.toFixed(hr < 10 ? 1 : 0)} hr ago`;
+  return `${Math.round(hr / 24)} d ago`;
+}
+
+/** Build a wind fallback chain from a user-picked primary plus the next
+ *  3 unique candidates from the resolver's ranked list. Used by both
+ *  AddLocationWizard and EditLocationSourcesModal on save so existing
+ *  locations benefit from the same fallback behavior new ones get.
+ *
+ *  The candidates list is already ranked live-then-distance by the
+ *  resolver, so we just take the head of that list (excluding the
+ *  primary, since it goes first) for the tail of the chain. */
+export function buildWindChain(
+  primary: { kind: "coops" | "ndbc"; id: string },
+  candidates: WindCandidate[],
+  maxChain = 4,
+): WindStationRef[] {
+  const out: WindStationRef[] = [{ kind: primary.kind, id: primary.id }];
+  for (const c of candidates) {
+    if (out.length >= maxChain) break;
+    if (c.kind === primary.kind && c.id === primary.id) continue;
+    out.push({ kind: c.kind, id: c.id });
+  }
+  return out;
 }
 
 // ─── Generic single-select with help text + empty fallback

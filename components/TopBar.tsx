@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import LocationPicker from "./LocationPicker";
 import AccountMenu from "./auth/AccountMenu";
 import PreferencesModal from "./preferences/PreferencesModal";
+import WelcomeModal from "./onboarding/WelcomeModal";
 import { refreshHud } from "@/app/actions";
 import type { CurrentUser } from "@/lib/auth";
 import type { ResolvedLocation, UserLocation, UserPreferences } from "@/lib/types";
@@ -43,7 +44,37 @@ export default function TopBar({
   const [theme, setTheme] = useState<ThemeMode>("auto");
   const [locOpen, setLocOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const isSignedIn = !!currentUser;
+
+  // Show the welcome modal once per device on first sign-in. localStorage
+  // gates the trigger — keeps the experience non-intrusive on subsequent
+  // sessions but still helpful when someone signs in on a new browser.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    if (typeof window === "undefined") return;
+    try {
+      if (localStorage.getItem("tidevisor_welcome_seen")) return;
+    } catch {
+      // Private-mode localStorage throws; skip the welcome rather than
+      // re-prompting on every reload.
+      return;
+    }
+    setWelcomeOpen(true);
+  }, [isSignedIn]);
+
+  function dismissWelcome() {
+    setWelcomeOpen(false);
+    try { localStorage.setItem("tidevisor_welcome_seen", "1"); } catch {}
+  }
+  function welcomeToLocation() {
+    dismissWelcome();
+    setLocOpen(true);
+  }
+  function welcomeToBriefing() {
+    dismissWelcome();
+    setPrefsOpen(true);
+  }
 
   // For signed-in users, sync the DB-stored theme preference into
   // localStorage so the pre-paint script picks it up on the next load.
@@ -218,6 +249,14 @@ export default function TopBar({
         onClose={() => setPrefsOpen(false)}
         initialPreferences={initialPreferences}
         isSignedIn={isSignedIn}
+      />
+
+      <WelcomeModal
+        open={welcomeOpen}
+        onClose={dismissWelcome}
+        onSetupLocation={welcomeToLocation}
+        onSetupBriefing={welcomeToBriefing}
+        userName={currentUser?.name ?? null}
       />
     </>
   );

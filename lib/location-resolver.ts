@@ -63,12 +63,34 @@ export interface BuoyCandidate {
 }
 /** Wind source — either a NOAA CO-OPS met-equipped station or an NDBC
  *  buoy. The two are presented in a single combined dropdown sorted by
- *  distance so users don't have to know which kind they're looking at. */
+ *  distance so users don't have to know which kind they're looking at.
+ *
+ *  Liveness:
+ *   - "live"    = latest observation is within the freshness window
+ *                 (CO-OPS: 60 min, NDBC: 120 min).
+ *   - "stale"   = the station has data but the latest sample is older
+ *                 than the freshness window. Common cause: sensor went
+ *                 offline mid-day, or a near-shore NDBC buoy that only
+ *                 reports a few times a day.
+ *   - "offline" = no observations at all in the last 6 h, or the
+ *                 station returned no data / an error. Includes
+ *                 sensor-stuck cases (speed=0 alongside gust>0).
+ *   - "unknown" = we didn't probe this candidate (it was past the top-N
+ *                 cutoff). Treated as "stale" for ranking purposes so
+ *                 the closer unprobed ones don't get pushed past live
+ *                 ones we know are good.
+ *
+ *  ageMin is set when a probe ran and returned data — used for the
+ *  picker's "Live · 3 min ago" / "Stale · 6 hr ago" labels.
+ */
+export type WindLiveness = "live" | "stale" | "offline" | "unknown";
 export interface WindCandidate {
   kind: "coops" | "ndbc";
   id: string;
   name: string;
   distanceMi: number;
+  liveness: WindLiveness;
+  ageMin?: number;
 }
 export interface MarineZoneCandidate {
   id: string;
@@ -129,16 +151,38 @@ export async function resolveLocationCandidate(
   // Combined wind candidates: CO-OPS stations that report met data
   // (filtered server-side via `?type=met` — excludes 8670681-style
   // tide-only stations) plus NDBC buoys (which mostly carry wind).
-  // Sorted by distance so the dropdown reads as one ranked list rather
-  // than two segregated lists by source.
-  const windCandidates: WindCandidate[] = [
+  // First merged sorted by distance, then re-ranked below by liveness.
+  const windByDistance: WindCandidate[] = [
     ...coopsMetCandidates.map((s): WindCandidate => ({
       kind: "coops", id: s.stationId, name: s.stationName, distanceMi: s.distanceMi,
+      liveness: "unknown",
     })),
     ...buoyCandidates.map((b): WindCandidate => ({
       kind: "ndbc", id: b.buoyId, name: b.name, distanceMi: b.distanceMi,
+      liveness: "unknown",
     })),
   ].sort((a, b) => a.distanceMi - b.distanceMi);
+
+  // Probe the closest N wind candidates for fresh data. We do this here
+  // — not at runtime — so the default auto-pick prefers stations that
+  // are actually live right now, instead of just "closest". Probing all
+  // would be wasteful (there can be 50+ NDBC buoys in range); 6 is
+  // enough to catch the realistic "nearest live source" for any US
+  // coastal location while keeping the resolver call under ~3 s.
+  const probedTop = await probeWindCandidates(windByDistance.slice(0, 6));
+  // Re-merge: probed candidates (with liveness set) followed by the
+  // un-probed tail (still "unknown"). Then sort by liveness rank, then
+  // distance within each bucket.
+  const windCandidates: WindCandidate[] = [
+    ...probedTop,
+    ...windByDistance.slice(6),
+  ].sort((a, b) => {
+    const rank = (l: WindLiveness) => l === "live" ? 0 : l === "stale" || l === "unknown" ? 1 : 2;
+    const da = rank(a.liveness);
+    const db = rank(b.liveness);
+    if (da !== db) return da - db;
+    return a.distanceMi - b.distanceMi;
+  });
 
   const warnings: ResolverWarning[] = [];
   const fields: ResolvedFieldsMeta = {};
@@ -265,14 +309,17 @@ export async function resolveLocationCandidate(
     });
   }
 
-  // ─── Default wind source. Nearest CO-OPS met-equipped station first,
-  // then nearest NDBC buoy. The two lists were already merged into
-  // windCandidates by distance, so we just take the head. The picker UI
-  // lets users override; this is purely the auto-pick for new locations.
+  // ─── Default wind source + fallback chain. Live-then-distance ranking
+  // was applied above, so windCandidates[0] is the closest source we
+  // actually verified is reporting fresh data (falling back to closest
+  // if nothing in the top-6 was live). We save up to 4 stations in the
+  // saved chain so the runtime can walk past a station that goes stale
+  // later in the day without needing to re-run the resolver.
   const defaultWind = windCandidates[0] ?? null;
-  const windStations: WindStationRef[] = [];
+  const windStations: WindStationRef[] = windCandidates
+    .slice(0, 4)
+    .map((c): WindStationRef => ({ kind: c.kind, id: c.id }));
   if (defaultWind) {
-    windStations.push({ kind: defaultWind.kind, id: defaultWind.id });
     fields.wind = {
       name: defaultWind.name,
       distanceMi: defaultWind.distanceMi,
@@ -282,8 +329,15 @@ export async function resolveLocationCandidate(
       warnings.push({
         field: "buoy", // reuse for now — UI bucket; no separate "wind" field
         severity: "info",
-        message: `Nearest wind source is ${defaultWind.distanceMi.toFixed(0)} mi away (${defaultWind.name}). Use the Wind dropdown to pick a different source if a closer one becomes available.`,
+        message: `Nearest live wind source is ${defaultWind.distanceMi.toFixed(0)} mi away (${defaultWind.name}). Use the Wind dropdown to pick a different source if a closer one becomes available.`,
         distanceMi: defaultWind.distanceMi,
+      });
+    }
+    if (defaultWind.liveness !== "live") {
+      warnings.push({
+        field: "buoy",
+        severity: "info",
+        message: `No nearby wind station was reporting fresh data when this location was created. The picker is using the closest source as a placeholder; live data may resume later, or pick a different option from the dropdown.`,
       });
     }
   } else {
@@ -850,6 +904,131 @@ function parseNdbcLocation(loc: string): { lat: number; lon: number } | null {
   if (m[4] === "W") lon = -lon;
   if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
   return { lat, lon };
+}
+
+// ─── Wind liveness probe ──────────────────────────────────────────────────
+//
+// At location-creation time we hit each top-N candidate to find out
+// whether it's actually reporting fresh data right now. The picker
+// ranks live sources ahead of stale/offline ones so the default works
+// without trial-and-error.
+//
+// Freshness thresholds match lib/wind-resolver.ts (so a candidate
+// marked "live" here is one that resolveWind() will accept at render
+// time): 60 min for CO-OPS (6-min cadence), 120 min for NDBC (which
+// can sample every 30-60 min, especially nearshore moored buoys).
+
+/** Per-source freshness threshold in minutes. */
+const COOPS_FRESH_MIN = 60;
+const NDBC_FRESH_MIN = 120;
+/** "Stale" cutoff — past this we treat the station as effectively offline. */
+const STALE_MAX_MIN = 24 * 60;
+/** Per-probe network timeout. Keeps the resolver bounded even if a
+ *  station's API is hanging. The candidate just gets marked "offline"
+ *  in that case — we never throw. */
+const PROBE_TIMEOUT_MS = 4000;
+
+async function probeWindCandidates(top: WindCandidate[]): Promise<WindCandidate[]> {
+  return Promise.all(top.map(probeOne));
+}
+
+async function probeOne(c: WindCandidate): Promise<WindCandidate> {
+  try {
+    const probe = c.kind === "coops" ? probeCoops(c.id) : probeNdbc(c.id);
+    const result = await withTimeout(probe, PROBE_TIMEOUT_MS);
+    if (!result) return { ...c, liveness: "offline" };
+    const freshMin = c.kind === "coops" ? COOPS_FRESH_MIN : NDBC_FRESH_MIN;
+    const ageMin = result.ageMin;
+    if (result.sensorStuck) return { ...c, liveness: "offline", ageMin };
+    if (ageMin <= freshMin) return { ...c, liveness: "live", ageMin };
+    if (ageMin <= STALE_MAX_MIN) return { ...c, liveness: "stale", ageMin };
+    return { ...c, liveness: "offline", ageMin };
+  } catch {
+    return { ...c, liveness: "offline" };
+  }
+}
+
+interface ProbeResult { ageMin: number; sensorStuck: boolean }
+
+/** CO-OPS wind probe — fetch the last 1 hour's samples (cheap, ~0-10
+ *  rows), look at the most recent. */
+async function probeCoops(stationId: string): Promise<ProbeResult | null> {
+  const url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?" + new URLSearchParams({
+    product: "wind", station: stationId, range: "1",
+    units: "english", time_zone: "lst_ldt", format: "json", application: "Tidevisor-probe",
+  }).toString();
+  const res = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) return null;
+  const json = await res.json() as {
+    data?: { t: string; s: string; g: string; d: string }[];
+    error?: { message: string };
+  };
+  if (json.error || !json.data?.length) return null;
+  const last = json.data[json.data.length - 1];
+  const ts = coopsTimeToISO(last.t);
+  const age = (Date.now() - Date.parse(ts)) / 60000;
+  const speed = Number(last.s);
+  const gust = last.g === "" ? 0 : Number(last.g);
+  return {
+    ageMin: Math.max(0, age),
+    sensorStuck: speed === 0 && gust > 0,
+  };
+}
+
+/** NDBC wind probe — fetch realtime2 text, take the top row. */
+async function probeNdbc(buoyId: string): Promise<ProbeResult | null> {
+  const url = `https://www.ndbc.noaa.gov/data/realtime2/${buoyId}.txt`;
+  const res = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) return null;
+  const text = await res.text();
+  const lines = text.split("\n").filter((l) => l && !l.startsWith("#"));
+  if (lines.length === 0) return null;
+  const cols = lines[0].trim().split(/\s+/);
+  // YY MM DD hh mm WDIR WSPD GST ...
+  if (cols.length < 8) return null;
+  const y = Number(cols[0]), mo = Number(cols[1]) - 1, d = Number(cols[2]);
+  const hh = Number(cols[3]), mm = Number(cols[4]);
+  if ([y, mo, d, hh, mm].some((n) => Number.isNaN(n))) return null;
+  const ts = Date.UTC(y, mo, d, hh, mm);
+  const age = (Date.now() - ts) / 60000;
+  // NDBC publishes "MM" for missing.
+  if (cols[6] === "MM" || cols[5] === "MM") return { ageMin: age, sensorStuck: true };
+  const speedMs = Number(cols[6]);
+  const gustMs = cols[7] === "MM" ? 0 : Number(cols[7]);
+  if (Number.isNaN(speedMs)) return null;
+  return {
+    ageMin: Math.max(0, age),
+    sensorStuck: speedMs === 0 && gustMs > 0,
+  };
+}
+
+/** Convert CO-OPS "yyyy-MM-dd HH:mm" Eastern-local string to an ISO
+ *  string with the correct DST offset. Duplicated here (small) to keep
+ *  this file's import surface tight; the canonical copy lives in
+ *  lib/noaa-coops.ts. */
+function coopsTimeToISO(t: string): string {
+  const dateStr = t.slice(0, 10);
+  const [y, m, d] = dateStr.split("-").map(Number);
+  let isDst = false;
+  if (m >= 3 && m <= 11) {
+    if (m > 3 && m < 11) isDst = true;
+    else {
+      const firstOfMonth = new Date(Date.UTC(y, m - 1, 1));
+      const firstSunday = 1 + ((7 - firstOfMonth.getUTCDay()) % 7);
+      if (m === 3) isDst = d >= firstSunday + 7;
+      else if (m === 11) isDst = d < firstSunday;
+    }
+  }
+  const offset = isDst ? "-04:00" : "-05:00";
+  return `${t.replace(" ", "T")}:00${offset}`;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); })
+     .catch(() => { clearTimeout(t); resolve(null); });
+  });
 }
 
 // ─── Distance helper ──────────────────────────────────────────────────────

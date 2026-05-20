@@ -32,6 +32,7 @@ import {
   windOption,
   encodeWindValue,
   decodeWindValue,
+  buildWindChain,
 } from "./SourcePickers";
 
 interface Props {
@@ -111,12 +112,13 @@ export default function EditLocationSourcesModal({ open, onClose, location }: Pr
     if (!location || state.kind !== "ready") return;
     setState({ kind: "saving" });
 
-    // Wind chain comes from the dedicated picker — single primary
-    // source, empty array if user picked "none". No longer derived from
-    // tide / buoy.
+    // Wind chain: user-picked primary + up to 3 more candidates as
+    // automatic fallbacks (live-then-distance ranked, so a stuck primary
+    // sensor doesn't take the whole tile down). Empty array if user
+    // picked "none".
     const decodedWind = decodeWindValue(windValue);
     const windStations: WindStationRef[] = decodedWind
-      ? [{ kind: decodedWind.kind, id: decodedWind.id }]
+      ? buildWindChain(decodedWind, state.result.candidates.wind)
       : [];
 
     // Regenerate the tide note based on the selected station's distance.

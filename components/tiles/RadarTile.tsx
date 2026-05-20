@@ -68,6 +68,18 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
   const [playing, setPlaying] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Theme tracked in state — not read synchronously from the DOM at map
+  // init time — because of a real race on mobile: app/layout.tsx's
+  // pre-paint script can read a stale matchMedia "false" on iOS first
+  // paint, set data-theme="light", and then TopBar's post-hydration
+  // effect corrects it to "dark". If the radar map happens to init
+  // between those two events (very common on mobile, where Leaflet's
+  // async import takes long enough for the correction to land first),
+  // it bakes in the wrong base layer and the old MutationObserver
+  // misses the change because it hadn't attached yet. Tracking the
+  // theme in state, with a mount-time observer, makes the swap fire
+  // even when the change predates `mapReady`.
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   // ----- inject Leaflet CSS once (shared with MapTile) -----
   useEffect(() => {
@@ -121,10 +133,23 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
     return () => { controller.abort(); clearInterval(refreshId); };
   }, [loadIndex]);
 
+  // ----- track theme from the document element -----
+  // Runs unconditionally on mount (does not wait for mapReady) so we
+  // catch the dark-mode correction that happens just after hydration.
+  useEffect(() => {
+    const read = (): "light" | "dark" =>
+      document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    // Sync once on mount in case the pre-paint script wrote a value
+    // we missed during initial render (state defaults to "light").
+    setTheme(read());
+    const observer = new MutationObserver(() => setTheme(read()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
   // ----- helper: pick base tile URL by current theme -----
-  function baseUrlForTheme(): string {
-    const dark = document.documentElement.getAttribute("data-theme") === "dark";
-    return dark ? CARTO_DARK : CARTO_LIGHT;
+  function baseUrlForTheme(t: "light" | "dark"): string {
+    return t === "dark" ? CARTO_DARK : CARTO_LIGHT;
   }
 
   // ----- init Leaflet map (recreates when location changes) -----
@@ -157,7 +182,12 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
       });
       mapRef.current = map;
 
-      baseLayerRef.current = L.tileLayer(baseUrlForTheme(), {
+      // Always read the current data-theme at the moment of map
+      // creation — by now any pre-hydration correction has landed.
+      // The state-driven effect below handles any later swaps.
+      const initialTheme: "light" | "dark" =
+        document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      baseLayerRef.current = L.tileLayer(baseUrlForTheme(initialTheme), {
         attribution: "© OpenStreetMap, © CARTO",
         subdomains: "abcd",
         maxZoom: 10,
@@ -193,16 +223,24 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
     };
   }, [lat, lon, displayName]);
 
-  // ----- swap base layer when the user toggles theme -----
+  // ----- swap base layer when the theme state changes -----
+  // Driven by the `theme` state (which is kept in sync with data-theme
+  // by the mount-time observer above), not by the DOM mutation directly.
+  // This decoupling is what fixes the mobile dark-mode race: if the
+  // theme correction lands BEFORE mapReady, we'd previously miss the
+  // swap; now the state holds the corrected value and this effect
+  // runs both on mapReady transitions and any subsequent theme change.
   useEffect(() => {
     if (!mapReady) return;
-    const observer = new MutationObserver(async () => {
+    let cancelled = false;
+    (async () => {
       const map = mapRef.current;
       if (!map) return;
       const mod = await import("leaflet");
+      if (cancelled) return;
       const L = mod.default ?? mod;
       if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
-      baseLayerRef.current = L.tileLayer(baseUrlForTheme(), {
+      baseLayerRef.current = L.tileLayer(baseUrlForTheme(theme), {
         attribution: "© OpenStreetMap, © CARTO",
         subdomains: "abcd",
         maxZoom: 10,
@@ -210,10 +248,9 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
       }).addTo(map);
       // Make sure the radar overlay stays on top.
       if (radarLayerRef.current) radarLayerRef.current.bringToFront();
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
-  }, [mapReady]);
+    })();
+    return () => { cancelled = true; };
+  }, [theme, mapReady]);
 
   // ----- update radar overlay when frame changes -----
   useEffect(() => {

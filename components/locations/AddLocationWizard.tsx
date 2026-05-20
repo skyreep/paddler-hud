@@ -32,6 +32,7 @@ import {
   windOption,
   encodeWindValue,
   decodeWindValue,
+  buildWindChain,
 } from "./SourcePickers";
 import MapPickerOverlay from "./MapPickerOverlay";
 
@@ -295,12 +296,15 @@ function PickStep({
       <label style={searchLabel}>
         Search by town or zip code
       </label>
+      {/* No autoFocus — on mobile it triggers the soft keyboard before the
+          user has a chance to see the other input methods (current location,
+          map picker) and the keyboard hides them. Field is still tappable;
+          desktop users can also just click it. */}
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="e.g. Tybee Island, Savannah, or 31328"
-        autoFocus
         style={input}
         autoComplete="off"
       />
@@ -410,10 +414,13 @@ function PreviewStep({
   const hasMarineZoneCandidates = candidates.marineZone.length > 0;
 
   function buildBundle(): ResolvedLocationBundle {
-    // Wind chain now comes from its own picker, not derived from tide
-    // or buoy. Single primary source — empty array if user picks "none".
+    // Wind chain: user-picked primary, plus up to 3 more candidates as
+    // automatic fallbacks. The candidates list is already ranked
+    // live-then-distance by the resolver, so the fallbacks come in
+    // useful order without any extra logic here. Empty array if user
+    // picks "none".
     const windStations: WindStationRef[] = decodedWind
-      ? [{ kind: decodedWind.kind, id: decodedWind.id }]
+      ? buildWindChain(decodedWind, candidates.wind)
       : [];
 
     // Regenerate the tide station note based on the selected (not auto-picked) station.
