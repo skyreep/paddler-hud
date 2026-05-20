@@ -1,24 +1,20 @@
-name: Daily briefing cron
+name: Daily briefing cron (manual fallback)
 
-# Fires hourly at minute 5 (slight offset from :00 so we don't compete
-# with every other GitHub Actions cron in the world for runner capacity).
-# The endpoint itself computes the current Eastern hour and filters
-# opted-in users for that hour, so the exact minute doesn't matter.
+# RETIRED AS PRIMARY TRIGGER. The hourly briefing cron now runs from
+# cron-job.org, which doesn't suffer GitHub Actions' free-tier tick-
+# dropping (we saw ~5 runs out of ~16 expected during one overnight
+# stretch, which is why the 6am briefing didn't fire on 2026-05-20).
 #
-# Note on reliability: GitHub Actions cron jobs can be delayed up to
-# ~15 minutes during high-load windows (a documented GitHub limitation).
-# Acceptable for a daily briefing — users expect "around 6am", not
-# 6:00:00 sharp. If precision ever matters, Vercel Pro's cron or a paid
-# scheduler like Upstash QStash gets sub-minute reliability.
+# Kept here as a manually-dispatchable fallback in case cron-job.org
+# itself goes down — trigger from the Actions UI ("Run workflow").
+# The schedule trigger has been removed so we don't double-send.
 #
 # Required secrets (Settings → Secrets and variables → Actions):
 #   CRON_SECRET — must match the same env var set on Vercel/Resend route.
 #   APP_BASE_URL — optional; defaults to https://tidevisor.com if unset.
 
 on:
-  schedule:
-    - cron: '5 * * * *'
-  # Allow manual trigger from the Actions UI for testing.
+  # schedule disabled — cron-job.org is now the primary trigger.
   workflow_dispatch:
 
 jobs:
