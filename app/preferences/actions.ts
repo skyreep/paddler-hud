@@ -11,6 +11,7 @@ import type {
   HeightUnits,
   TempUnits,
   ThemeMode,
+  TileConfig,
   TimeFormatPref,
   UserPreferences,
   WindUnits,
@@ -27,6 +28,10 @@ export interface PreferencesPatch {
   dailyBriefingEnabled?: boolean;
   /** 0-23 in America/New_York. Validated against the DB check constraint. */
   dailyBriefingHour?: number;
+  /** Tile order + visibility for the dashboard. Replaces (not merges
+   *  with) the stored value so a save can both reorder and re-hide in
+   *  the same operation. */
+  tileConfig?: TileConfig;
 }
 
 export interface UpdatePreferencesResult {
@@ -77,6 +82,25 @@ export async function updatePreferences(
       return { ok: false, error: "Briefing hour must be between 0 and 23." };
     }
     row.daily_briefing_hour = h;
+  }
+  if (patch.tileConfig !== undefined) {
+    // Defensive sanity check: the column is jsonb so Postgres will
+    // accept whatever object we hand it, but bad shapes would break
+    // the reader's coercion. Validate keys are strings and values
+    // have the expected { visible, order } shape.
+    if (typeof patch.tileConfig !== "object" || patch.tileConfig === null) {
+      return { ok: false, error: "Invalid tileConfig: expected object." };
+    }
+    const clean: TileConfig = {};
+    for (const [key, val] of Object.entries(patch.tileConfig)) {
+      if (typeof key !== "string" || !key) continue;
+      if (!val || typeof val !== "object") continue;
+      const v = val as Partial<{ visible: boolean; order: number }>;
+      if (typeof v.visible !== "boolean") continue;
+      if (typeof v.order !== "number" || !Number.isFinite(v.order)) continue;
+      clean[key] = { visible: v.visible, order: v.order };
+    }
+    row.tile_config = clean;
   }
   row.updated_at = new Date().toISOString();
 

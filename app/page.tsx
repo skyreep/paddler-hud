@@ -1,20 +1,7 @@
+import { Fragment } from "react";
 import TopBar from "@/components/TopBar";
 import AdvisoryBanner from "@/components/tiles/AdvisoryBanner";
-import RightNow from "@/components/tiles/RightNow";
-import WindNowTile from "@/components/tiles/WindNowTile";
-import MapTile from "@/components/tiles/MapTile";
-import ChartTile from "@/components/tiles/ChartTile";
-import RadarTile from "@/components/tiles/RadarTile";
-import TideTile from "@/components/tiles/TideTile";
-import TideMonthTile from "@/components/tiles/TideMonthTile";
-import CurrentTile from "@/components/tiles/CurrentTile";
-import AstroTile from "@/components/tiles/AstroTile";
-import SolunarTile from "@/components/tiles/SolunarTile";
-import HourlyTile from "@/components/tiles/HourlyTile";
-import WeeklyTile from "@/components/tiles/WeeklyTile";
-import MarineTile from "@/components/tiles/MarineTile";
-import RiversTile from "@/components/tiles/RiversTile";
-import TropicalTile from "@/components/tiles/TropicalTile";
+import { TILE_REGISTRY, effectiveTileOrder } from "@/lib/tile-registry";
 
 import { fetchTides, fetchWaterLevel, fetchCurrents, deriveCurrentsFromTide, fetchWindWithFallback } from "@/lib/noaa-coops";
 import { fetchWeather, fetchAlerts } from "@/lib/nws";
@@ -130,33 +117,35 @@ export default async function Home({
           gridTemplateColumns: "1fr",
           gap: 14,
         }} className="hud-grid">
-          {/* Order: gate-keeping info first, weather grouped together, marine + rivers, tropical, astro */}
-          {weather && (
-            <RightNow
-              weather={weather.now}
-              fetchedAt={fetchedAt}
-              airQuality={airQuality}
-              liveTideFt={water?.observedHeight ?? null}
-              attribution={weather.attribution}
-              observation={weather.observation}
-              windSource={windSource}
-              prefs={initialPreferences}
-            />
-          )}
-          {wind && <WindNowTile wind={wind} prefs={initialPreferences} />}
-          <MapTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
-          <ChartTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
-          {tides && <TideTile tides={tides} stationNote={station.tideStationNote} liveTideFt={water?.observedHeight ?? null} prefs={initialPreferences} />}
-          {currents && <CurrentTile currents={currents} prefs={initialPreferences} />}
-          {tides && <TideMonthTile tides={tides} prefs={initialPreferences} />}
-          {weather && <HourlyTile hours={weather.hourly} attribution={weather.attribution} prefs={initialPreferences} />}
-          {weather && <WeeklyTile days={weather.daily} attribution={weather.attribution} prefs={initialPreferences} />}
-          <RadarTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
-          {buoy && <MarineTile buoy={buoy} prefs={initialPreferences} />}
-          <RiversTile gauges={validGauges} prefs={initialPreferences} userGauges={userGauges} />
-          {tropical && <TropicalTile tropical={tropical} prefs={initialPreferences} />}
-          <AstroTile astro={astro} prefs={initialPreferences} />
-          <SolunarTile periods={astro.solunar} prefs={initialPreferences} />
+          {/* Tile order/visibility comes from the user's saved tileConfig
+              (or the canonical default if they haven't customized).
+              effectiveTileOrder handles tiles introduced after the user's
+              last save by appending them visible. Each tile's render
+              factory decides whether it has the data to render at all
+              (e.g. wind tile returns null when no wind data resolved). */}
+          {effectiveTileOrder(initialPreferences.tileConfig, TILE_REGISTRY)
+            .filter((t) => t.visible)
+            .map((t) => (
+              <Fragment key={t.entry.id}>
+                {t.entry.render({
+                  station,
+                  weather,
+                  tides,
+                  water,
+                  currents,
+                  buoy,
+                  airQuality,
+                  tropical,
+                  wind,
+                  windSource,
+                  astro,
+                  gauges: validGauges,
+                  userGauges,
+                  prefs: initialPreferences,
+                  fetchedAt,
+                })}
+              </Fragment>
+            ))}
         </div>
 
         <div style={{

@@ -23,10 +23,12 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { updatePreferences } from "@/app/preferences/actions";
+import TileLayoutEditor from "./TileLayoutEditor";
 import type {
   HeightUnits,
   TempUnits,
   ThemeMode,
+  TileConfig,
   TimeFormatPref,
   UserPreferences,
   WindUnits,
@@ -56,6 +58,11 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
   const [prefs, setPrefs] = useState<UserPreferences>(initialPreferences);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Layout editor has its own save flow (batched up/down/hide changes
+  // committed via an explicit Save button), so it gets its own
+  // saving/error state to avoid stepping on the single-toggle path.
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
 
   // When the modal opens, sync local state from the server prop. For
   // guests, prefer localStorage over the prop (server defaults aren't
@@ -129,6 +136,24 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
       // in places that read from the server (e.g. theme cookie sync — future).
       router.refresh();
     }
+  }
+
+  /** Persist a new tile layout. Signed-in only — for guests we hide
+   *  the layout editor since the page is server-rendered and can't
+   *  read localStorage at SSR time, so any guest-saved layout
+   *  wouldn't apply until they signed in anyway. */
+  async function saveTileConfig(next: TileConfig) {
+    setPrefs((p) => ({ ...p, tileConfig: next }));
+    setLayoutError(null);
+    setLayoutSaving(true);
+    const result = await updatePreferences({ tileConfig: next });
+    setLayoutSaving(false);
+    if (!result.ok) {
+      setLayoutError(result.error ?? "Couldn't save layout.");
+      return;
+    }
+    // Refresh server data so the page re-renders with the new order.
+    router.refresh();
   }
 
   if (!open) return null;
@@ -262,6 +287,21 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
                 </div>
               </>
             )}
+          </Section>
+        )}
+
+        {/* Tile layout — signed-in only. Guests can't customize because
+            the dashboard is server-rendered and SSR can't read
+            localStorage, so a guest's saved layout wouldn't apply
+            until they signed in anyway. */}
+        {isSignedIn && (
+          <Section label="Tile layout">
+            <TileLayoutEditor
+              value={prefs.tileConfig}
+              onSave={saveTileConfig}
+              saving={layoutSaving}
+              saveError={layoutError}
+            />
           </Section>
         )}
 
