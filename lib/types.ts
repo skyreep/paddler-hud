@@ -241,6 +241,14 @@ export interface AstroResponse {
   moonUnderfoot: string | null;
   moonPhaseName: string;
   moonIlluminationPct: number;
+  /** Next full-moon event after `date`. ISO timestamp of approximate
+   *  peak illumination, plus days until and the traditional North-
+   *  American month-name (Strawberry Moon, Harvest Moon, etc). */
+  nextFullMoon: {
+    iso: string;
+    daysAway: number;
+    name: string;
+  };
   tidbits: string[];
   solunar: SolunarPeriod[];
   source: "SunCalc (USNO-compatible)";

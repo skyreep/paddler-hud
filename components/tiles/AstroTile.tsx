@@ -34,6 +34,9 @@ export default function AstroTile({ astro, prefs }: { astro: AstroResponse; pref
         <div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{astro.moonPhaseName}</div>
           <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{astro.moonIlluminationPct}% illuminated</div>
+          <div style={{ color: "var(--text-faint)", fontSize: 11, marginTop: 2 }}>
+            {formatNextFullMoon(astro.nextFullMoon)}
+          </div>
         </div>
       </div>
 
@@ -85,6 +88,18 @@ export default function AstroTile({ astro, prefs }: { astro: AstroResponse; pref
       )}
     </section>
   );
+}
+
+/** Render the "next full moon" subtitle. Today/tonight gets a short
+ *  callout; otherwise we show the traditional month name + a friendly
+ *  date + days-away count. */
+function formatNextFullMoon(n: { iso: string; daysAway: number; name: string }): string {
+  if (n.daysAway < 0.5)  return `Full ${n.name} tonight`;
+  if (n.daysAway < 1.5)  return `Next: ${n.name} tomorrow`;
+  const d = new Date(n.iso);
+  const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const days = Math.round(n.daysAway);
+  return `Next: ${n.name} · ${dateLabel} (in ${days} days)`;
 }
 
 function Grid({ items }: { items: [string, string, string][] }) {

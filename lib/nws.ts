@@ -330,11 +330,50 @@ export async function fetchWeather(
       ? gridSumWindow(grid.quantitativePrecipitation, start, end) : null;
     d.precipAmountIn = mmToIn(total) ?? undefined;
   }
-  const daily = Array.from(dailyMap.values()).slice(0, 7).map(d => ({
-    ...d,
-    hiF: d.hiF === 999 ? d.loF : d.hiF,
-    loF: d.loF === -999 ? d.hiF : d.loF,
-  }));
+  // The 12-hour period grouping above can collapse hi === lo when NWS
+  // returns only one period for a calendar date — e.g. when the
+  // "Tonight" period's startTime offset slices to tomorrow's date
+  // instead of today's, leaving today with just the daytime period and
+  // a -999 loF sentinel that the fallback turns into a duplicate of
+  // hiF. Use the hourly forecast (24 × 1-hour samples) as the primary
+  // source of truth for hi/lo on any date we have substantial hourly
+  // coverage for (≥6 samples); fall back to period-derived values for
+  // days 3-7 that the hourly window doesn't reach.
+  const hourlyStats = new Map<string, { hi: number; lo: number; count: number }>();
+  for (const p of hourly.properties.periods) {
+    const date = p.startTime.slice(0, 10);
+    const t = p.temperature;
+    const ex = hourlyStats.get(date);
+    if (ex) {
+      if (t > ex.hi) ex.hi = t;
+      if (t < ex.lo) ex.lo = t;
+      ex.count++;
+    } else {
+      hourlyStats.set(date, { hi: t, lo: t, count: 1 });
+    }
+  }
+
+  const daily = Array.from(dailyMap.values()).slice(0, 7).map(d => {
+    const h = hourlyStats.get(d.date);
+    if (h && h.count >= 6) {
+      // Merge: hourly gives us the true continuous range, but the
+      // 12-hour period temperatures are NWS's "stated" hi/lo and can
+      // peak past the hourly samples (which are at hour boundaries).
+      // Take the max of both, similarly for lo.
+      const periodHi = d.hiF === 999 ? -Infinity : d.hiF;
+      const periodLo = d.loF === -999 ? Infinity  : d.loF;
+      return {
+        ...d,
+        hiF: Math.max(h.hi, periodHi),
+        loF: Math.min(h.lo, periodLo),
+      };
+    }
+    return {
+      ...d,
+      hiF: d.hiF === 999 ? d.loF : d.hiF,
+      loF: d.loF === -999 ? d.hiF : d.loF,
+    };
+  });
 
   const office = (point.properties.cwa ?? point.properties.gridId ?? "—").toUpperCase();
   const attribution = {

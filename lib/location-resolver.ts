@@ -50,16 +50,28 @@ export interface TideCandidate {
   stationName: string;
   distanceMi: number;
   isHarmonic: boolean;
+  /** Real-time water-level liveness — probed for the top few candidates
+   *  during resolution. Tide PREDICTIONS are always available for any
+   *  station in the list (they're math), but the live water-level
+   *  sensor that powers the surge anomaly + the "tide right now" pill
+   *  on TideTile can go offline independently. This badge tells users
+   *  whether they'll get live readings, not just predictions. */
+  liveness: SourceLiveness;
+  ageMin?: number;
 }
 export interface ObservationCandidate {
   stationId: string;
   distanceMi: number;
   isIcao: boolean;
+  liveness: WindLiveness;
+  ageMin?: number;
 }
 export interface BuoyCandidate {
   buoyId: string;
   name: string;
   distanceMi: number;
+  liveness: SourceLiveness;
+  ageMin?: number;
 }
 /** Wind source — either a NOAA CO-OPS met-equipped station or an NDBC
  *  buoy. The two are presented in a single combined dropdown sorted by
@@ -83,13 +95,20 @@ export interface BuoyCandidate {
  *  ageMin is set when a probe ran and returned data — used for the
  *  picker's "Live · 3 min ago" / "Stale · 6 hr ago" labels.
  */
-export type WindLiveness = "live" | "stale" | "offline" | "unknown";
+/** Shared liveness enum across every probed source type
+ *  (wind, tide water-level, observation, buoy). Same semantics: "live"
+ *  = fresh within source-specific window, "stale" = has data but too
+ *  old, "offline" = no usable data, "unknown" = past the probed-top-N
+ *  cutoff (treated like "stale" for ranking).
+ *  Aliased as WindLiveness for back-compat with existing imports. */
+export type SourceLiveness = "live" | "stale" | "offline" | "unknown";
+export type WindLiveness = SourceLiveness;
 export interface WindCandidate {
   kind: "coops" | "ndbc";
   id: string;
   name: string;
   distanceMi: number;
-  liveness: WindLiveness;
+  liveness: SourceLiveness;
   ageMin?: number;
 }
 export interface MarineZoneCandidate {
@@ -169,27 +188,72 @@ export async function resolveLocationCandidate(
   // would be wasteful (there can be 50+ NDBC buoys in range); 6 is
   // enough to catch the realistic "nearest live source" for any US
   // coastal location while keeping the resolver call under ~3 s.
-  const probedTop = await probeWindCandidates(windByDistance.slice(0, 6));
-  // Re-merge: probed candidates (with liveness set) followed by the
-  // un-probed tail (still "unknown"). Then sort by liveness rank, then
-  // distance within each bucket.
+  // Probe all four candidate kinds in parallel — top 5-6 of each get a
+  // liveness check. Same goal as wind: the source picker labels every
+  // candidate so the user doesn't have to manually try-and-error their
+  // way through offline sensors. Runs in parallel so the overall
+  // resolver call doesn't grow much past the single-probe time.
+  const rawObservationCandidates = nwsOutcome?.observationCandidates ?? [];
+  const [probedWindTop, probedTideTop, probedObsTop, probedBuoyTop] = await Promise.all([
+    probeWindCandidates(windByDistance.slice(0, 6)),
+    probeTideCandidates(tideCandidates.slice(0, 5)),
+    probeObservationCandidates(rawObservationCandidates.slice(0, 5)),
+    probeBuoyCandidates(buoyCandidates.slice(0, 5)),
+  ]);
+
+  // Wind: re-rank live-then-distance.
   const windCandidates: WindCandidate[] = [
-    ...probedTop,
+    ...probedWindTop,
     ...windByDistance.slice(6),
   ].sort((a, b) => {
-    const rank = (l: WindLiveness) => l === "live" ? 0 : l === "stale" || l === "unknown" ? 1 : 2;
+    const rank = (l: SourceLiveness) => l === "live" ? 0 : l === "stale" || l === "unknown" ? 1 : 2;
     const da = rank(a.liveness);
     const db = rank(b.liveness);
     if (da !== db) return da - db;
     return a.distanceMi - b.distanceMi;
   });
 
+  // Tide: keep existing distance + harmonic ordering — harmonic still
+  // matters more than liveness for the tide curve. Just splice the
+  // probed top back into the list so labels show the badge.
+  const probedTideById = new Map(probedTideTop.map((t) => [t.stationId, t]));
+  const tideCandidatesProbed: TideCandidate[] = tideCandidates.map(
+    (t) => probedTideById.get(t.stationId) ?? t,
+  );
+
+  // Observation: re-rank live-then-icao-then-distance. ICAO preference
+  // is still relevant (those are ASOS = best reporting cadence) but
+  // gets demoted below liveness.
+  const probedObsById = new Map(probedObsTop.map((o) => [o.stationId, o]));
+  const observationCandidatesProbed: ObservationCandidate[] = rawObservationCandidates
+    .map((o) => probedObsById.get(o.stationId) ?? o)
+    .sort((a, b) => {
+      const rank = (l: SourceLiveness) => l === "live" ? 0 : l === "stale" || l === "unknown" ? 1 : 2;
+      const da = rank(a.liveness);
+      const db = rank(b.liveness);
+      if (da !== db) return da - db;
+      if (a.isIcao !== b.isIcao) return a.isIcao ? -1 : 1;
+      return a.distanceMi - b.distanceMi;
+    });
+
+  // Buoy: re-rank live-then-distance (same as wind).
+  const probedBuoyById = new Map(probedBuoyTop.map((b) => [b.buoyId, b]));
+  const buoyCandidatesProbed: BuoyCandidate[] = buoyCandidates
+    .map((b) => probedBuoyById.get(b.buoyId) ?? b)
+    .sort((a, b) => {
+      const rank = (l: SourceLiveness) => l === "live" ? 0 : l === "stale" || l === "unknown" ? 1 : 2;
+      const da = rank(a.liveness);
+      const db = rank(b.liveness);
+      if (da !== db) return da - db;
+      return a.distanceMi - b.distanceMi;
+    });
+
   const warnings: ResolverWarning[] = [];
   const fields: ResolvedFieldsMeta = {};
 
   // ─── NWS zones + observation station
   const nwsZone = nwsOutcome?.landZone ?? null;
-  const observationCandidates = nwsOutcome?.observationCandidates ?? [];
+  const observationCandidates = observationCandidatesProbed;
   const marineZoneCandidates = nwsOutcome?.marineZoneCandidates ?? [];
   const displayName = suggestedName?.trim()
     || nwsOutcome?.cityState
@@ -207,7 +271,7 @@ export async function resolveLocationCandidate(
   // ─── Pick default tide station: prefer harmonic if within 60 mi.
   // Top of the candidate list (sorted by distance) is the auto-pick;
   // user can swap from the dropdown in the wizard.
-  const defaultTide = pickDefaultTide(tideCandidates);
+  const defaultTide = pickDefaultTide(tideCandidatesProbed);
   let tideStationId: string;
   let tideStationNote: string | null = null;
   if (defaultTide) {
@@ -274,7 +338,7 @@ export async function resolveLocationCandidate(
   }
 
   // ─── Default buoy: nearest within 60 mi, otherwise null (Marine tile hides).
-  const defaultBuoy = buoyCandidates[0] ?? null;
+  const defaultBuoy = buoyCandidatesProbed[0] ?? null;
   const buoyId = defaultBuoy && defaultBuoy.distanceMi <= 60 ? defaultBuoy.buoyId : null;
   if (buoyId && defaultBuoy) {
     fields.buoy = { name: defaultBuoy.name, distanceMi: defaultBuoy.distanceMi };
@@ -362,9 +426,9 @@ export async function resolveLocationCandidate(
   };
 
   const candidates: ResolverCandidates = {
-    tide: buildTideCandidates(tideCandidates),
+    tide: buildTideCandidates(tideCandidatesProbed),
     observation: observationCandidates.slice(0, 6),
-    buoy: buoyCandidates.slice(0, 8),
+    buoy: buoyCandidatesProbed.slice(0, 8),
     wind: windCandidates.slice(0, 10),
     marineZone: marineZoneCandidates,
   };
@@ -621,6 +685,7 @@ async function resolveAllObservationStations(
         stationId: id,
         distanceMi: haversineMi(lat, lon, coords[1], coords[0]),
         isIcao: /^[KP][A-Z]{3}$/.test(id),
+        liveness: "unknown",
       };
     })
     .filter((s): s is ObservationCandidate => s !== null)
@@ -800,6 +865,7 @@ async function resolveAllTideStations(lat: number, lon: number): Promise<TideCan
         stationName: String(s.name),
         distanceMi: haversineMi(lat, lon, rawLat, rawLng),
         isHarmonic,
+        liveness: "unknown",
       });
     }
   }
@@ -815,6 +881,7 @@ async function resolveAllTideStations(lat: number, lon: number): Promise<TideCan
       stationName: meta.name,
       distanceMi: haversineMi(lat, lon, meta.lat, meta.lng),
       isHarmonic: true,
+      liveness: "unknown",
     });
   }
 
@@ -890,6 +957,7 @@ async function resolveAllBuoys(lat: number, lon: number): Promise<BuoyCandidate[
       buoyId: id,
       name: name || id,
       distanceMi: haversineMi(lat, lon, coords.lat, coords.lon),
+      liveness: "unknown",
     });
   }
   return candidates.sort((a, b) => a.distanceMi - b.distanceMi);
@@ -945,6 +1013,132 @@ async function probeOne(c: WindCandidate): Promise<WindCandidate> {
     return { ...c, liveness: "offline", ageMin };
   } catch {
     return { ...c, liveness: "offline" };
+  }
+}
+
+// ─── Tide / observation / buoy liveness probes ───────────────────────────
+//
+// Same idea as the wind probes, just hitting different endpoints. Each
+// returns a copy of the candidate with `liveness` + `ageMin` filled in.
+// The shared `classify` helper centralises the live/stale/offline
+// decision so per-source thresholds are the only thing that varies.
+
+/** Tide water-level freshness threshold. CO-OPS pushes every 6 min, so
+ *  30 min is a generous "still working" window — past that the live
+ *  feed has either lost the station or the sensor's offline. Tide
+ *  PREDICTIONS are independent of this; they're computed math and
+ *  always available. This badge just tells the user whether they'll
+ *  also get the live surge-anomaly reading. */
+const TIDE_WL_FRESH_MIN = 30;
+/** METAR / NWS observation freshness. Most ASOS sites publish every
+ *  5 min and most non-ASOS still publish every 20 min. 60 min catches
+ *  the slowest acceptable case; older than that and the station is
+ *  effectively offline. */
+const OBS_FRESH_MIN = 60;
+
+interface AgeProbeResult { ageMin: number }
+
+async function probeTideCandidates(top: TideCandidate[]): Promise<TideCandidate[]> {
+  return Promise.all(top.map(async (c) => {
+    // Subordinate stations don't have water-level sensors — they're
+    // prediction-only reference points derived harmonically from a
+    // nearby reference gauge. Predictions still work fine, so we leave
+    // their liveness as "unknown" and let the picker render a
+    // tide-specific "Predictions" badge instead of probing.
+    if (!c.isHarmonic) return c;
+    const result = await withTimeout(probeTideWaterLevel(c.stationId), PROBE_TIMEOUT_MS);
+    return applyLiveness(c, result, TIDE_WL_FRESH_MIN);
+  }));
+}
+
+async function probeObservationCandidates(top: ObservationCandidate[]): Promise<ObservationCandidate[]> {
+  return Promise.all(top.map(async (c) => {
+    const result = await withTimeout(probeNwsObservation(c.stationId), PROBE_TIMEOUT_MS);
+    return applyLiveness(c, result, OBS_FRESH_MIN);
+  }));
+}
+
+async function probeBuoyCandidates(top: BuoyCandidate[]): Promise<BuoyCandidate[]> {
+  return Promise.all(top.map(async (c) => {
+    const result = await withTimeout(probeNdbcAny(c.buoyId), PROBE_TIMEOUT_MS);
+    return applyLiveness(c, result, NDBC_FRESH_MIN);
+  }));
+}
+
+function applyLiveness<T extends { liveness: SourceLiveness; ageMin?: number }>(
+  c: T,
+  result: AgeProbeResult | null,
+  freshMin: number,
+): T {
+  if (!result) return { ...c, liveness: "offline" };
+  const ageMin = result.ageMin;
+  if (ageMin <= freshMin) return { ...c, liveness: "live", ageMin };
+  if (ageMin <= STALE_MAX_MIN) return { ...c, liveness: "stale", ageMin };
+  return { ...c, liveness: "offline", ageMin };
+}
+
+/** Tide water-level latest sample. Returns null if the station has no
+ *  water-level sensor (many subordinate / harmonic stations don't —
+ *  they're just prediction reference points), which we surface as
+ *  "offline" since the user won't get live readings from them. */
+async function probeTideWaterLevel(stationId: string): Promise<AgeProbeResult | null> {
+  const url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?" + new URLSearchParams({
+    product: "water_level", station: stationId, date: "latest", datum: "MLLW",
+    units: "english", time_zone: "lst_ldt", format: "json", application: "Tidevisor-probe",
+  }).toString();
+  try {
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (!res.ok) return null;
+    const json = await res.json() as {
+      data?: { t: string; v: string }[];
+      error?: { message: string };
+    };
+    if (json.error || !json.data?.length) return null;
+    const ts = coopsTimeToISO(json.data[0].t);
+    return { ageMin: Math.max(0, (Date.now() - Date.parse(ts)) / 60000) };
+  } catch {
+    return null;
+  }
+}
+
+/** NWS observation latest sample. */
+async function probeNwsObservation(stationId: string): Promise<AgeProbeResult | null> {
+  const url = `https://api.weather.gov/stations/${stationId}/observations/latest`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": NWS_USER_AGENT, Accept: "application/geo+json" },
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as { properties?: { timestamp?: string } };
+    const ts = json.properties?.timestamp;
+    if (!ts) return null;
+    return { ageMin: Math.max(0, (Date.now() - Date.parse(ts)) / 60000) };
+  } catch {
+    return null;
+  }
+}
+
+/** NDBC realtime2 freshness — checks if ANY observation exists for the
+ *  buoy, not specifically a wind reading. Different from probeNdbc()
+ *  used by the wind probe, which gates on having usable wind data. */
+async function probeNdbcAny(buoyId: string): Promise<AgeProbeResult | null> {
+  const url = `https://www.ndbc.noaa.gov/data/realtime2/${buoyId}.txt`;
+  try {
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (!res.ok) return null;
+    const text = await res.text();
+    const lines = text.split("\n").filter((l) => l && !l.startsWith("#"));
+    if (lines.length === 0) return null;
+    const cols = lines[0].trim().split(/\s+/);
+    if (cols.length < 5) return null;
+    const y = Number(cols[0]), mo = Number(cols[1]) - 1, d = Number(cols[2]);
+    const hh = Number(cols[3]), mm = Number(cols[4]);
+    if ([y, mo, d, hh, mm].some((n) => Number.isNaN(n))) return null;
+    const ts = Date.UTC(y, mo, d, hh, mm);
+    return { ageMin: Math.max(0, (Date.now() - ts) / 60000) };
+  } catch {
+    return null;
   }
 }
 

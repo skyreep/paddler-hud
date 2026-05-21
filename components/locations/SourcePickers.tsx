@@ -36,22 +36,47 @@ export function decodeWindValue(v: string): { kind: "coops" | "ndbc"; id: string
 
 // ─── Candidate option formatters
 
+/** Liveness badge for any candidate type. Same vocabulary as the wind
+ *  picker so users learn the symbols once. For tide stations specifically:
+ *  "Live" means the WATER-LEVEL sensor is reporting — predictions are
+ *  always there regardless of this badge. */
+function livenessTag(liveness: "live" | "stale" | "offline" | "unknown", ageMin?: number): string {
+  if (liveness === "live")    return `🟢 Live${ageMin != null ? ` · ${formatAge(ageMin)}` : ""}`;
+  if (liveness === "stale")   return `🟡 Stale${ageMin != null ? ` · ${formatAge(ageMin)}` : ""}`;
+  if (liveness === "offline") return "⚪ Offline";
+  return "○";
+}
+
 export function tideOption(c: TideCandidate): { value: string; label: string } {
   return {
     value: c.stationId,
-    label: `${c.stationName} — ${c.distanceMi.toFixed(1)} mi ${c.isHarmonic ? "(harmonic)" : "(subordinate)"}`,
+    label: `${tideBadge(c)} · ${c.stationName} — ${c.distanceMi.toFixed(1)} mi ${c.isHarmonic ? "(harmonic)" : "(subordinate)"}`,
   };
+}
+
+/** Tide-specific badge. Unlike wind/obs/buoy, a tide station whose
+ *  water-level sensor isn't reporting (or never had one — most
+ *  subordinate stations are prediction-only) is still perfectly usable:
+ *  predictions drive the tile curve regardless. So "offline" here is
+ *  misleading. Instead we surface three states:
+ *    🟢 Live · age   — harmonic gauge reporting fresh water level
+ *    🟡 Stale · age  — harmonic gauge, sensor lagging
+ *    📊 Predictions  — subordinate, or harmonic with sensor offline */
+function tideBadge(c: TideCandidate): string {
+  if (c.liveness === "live")  return `🟢 Live${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}`;
+  if (c.liveness === "stale") return `🟡 Stale${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}`;
+  return "📊 Predictions";
 }
 export function obsOption(c: ObservationCandidate): { value: string; label: string } {
   return {
     value: c.stationId,
-    label: `${c.stationId} — ${c.distanceMi.toFixed(1)} mi${c.isIcao ? " (airport)" : ""}`,
+    label: `${livenessTag(c.liveness, c.ageMin)} · ${c.stationId} — ${c.distanceMi.toFixed(1)} mi${c.isIcao ? " (airport)" : ""}`,
   };
 }
 export function buoyOption(c: BuoyCandidate): { value: string; label: string } {
   return {
     value: c.buoyId,
-    label: `${c.name} (${c.buoyId}) — ${c.distanceMi.toFixed(1)} mi`,
+    label: `${livenessTag(c.liveness, c.ageMin)} · ${c.name} (${c.buoyId}) — ${c.distanceMi.toFixed(1)} mi`,
   };
 }
 export function marineZoneOption(c: MarineZoneCandidate): { value: string; label: string } {
@@ -61,18 +86,11 @@ export function marineZoneOption(c: MarineZoneCandidate): { value: string; label
   };
 }
 export function windOption(c: WindCandidate): { value: string; label: string } {
-  // Prepend a liveness indicator so the user can see at a glance which
-  // sources are actually reporting fresh data. "○" is a deliberate
-  // visual placeholder for un-probed candidates (everything past the
-  // top-N cutoff) — better than hiding the distinction.
-  const tag =
-    c.liveness === "live"    ? `🟢 Live${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}` :
-    c.liveness === "stale"   ? `🟡 Stale${c.ageMin != null ? ` · ${formatAge(c.ageMin)}` : ""}` :
-    c.liveness === "offline" ? "⚪ Offline" :
-                                "○";
+  // Liveness indicator first so users can see at a glance which sources
+  // are reporting fresh data — same vocabulary across all picker types.
   return {
     value: encodeWindValue(c.kind, c.id),
-    label: `${tag} · ${c.name} (${c.id}) — ${c.distanceMi.toFixed(1)} mi · ${c.kind === "coops" ? "CO-OPS" : "NDBC buoy"}`,
+    label: `${livenessTag(c.liveness, c.ageMin)} · ${c.name} (${c.id}) — ${c.distanceMi.toFixed(1)} mi · ${c.kind === "coops" ? "CO-OPS" : "NDBC buoy"}`,
   };
 }
 

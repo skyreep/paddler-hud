@@ -52,6 +52,28 @@ const METEOR_SHOWERS: { name: string; start: [number, number]; end: [number, num
 
 const LUNAR_MONTH_DAYS = 29.530588;
 
+/** Find the next full-moon event after `from`. Uses SunCalc's phase
+ *  value (0..1 monotonic across one lunar cycle, 0.5 = full moon) and
+ *  the synodic-month length to project forward. The projection is a
+ *  linear approximation — true full-moon time can vary by up to ~14h
+ *  due to lunar orbit eccentricity — which is well inside what we need
+ *  for "Next: Strawberry Moon, June 8 (in 18 days)" UI labels. The
+ *  month-name label is derived from the projected calendar month. */
+function findNextFullMoon(from: Date): { iso: string; daysAway: number; name: string } {
+  const phase = SunCalc.getMoonIllumination(from).phase;
+  // phase < 0.5: full moon comes later in this cycle
+  // phase >= 0.5: full moon comes in next cycle
+  const daysAway = phase < 0.5
+    ? (0.5 - phase) * LUNAR_MONTH_DAYS
+    : (1.5 - phase) * LUNAR_MONTH_DAYS;
+  const target = new Date(from.getTime() + daysAway * 86400000);
+  return {
+    iso: target.toISOString(),
+    daysAway,
+    name: FULL_MOON_NAMES[target.getMonth()],
+  };
+}
+
 function dateInRange(d: Date, start: [number, number], end: [number, number]): boolean {
   const m = d.getMonth() + 1, day = d.getDate();
   const cur = m * 100 + day;
@@ -216,6 +238,7 @@ export function computeAstro(lat: number, lon: number, date: Date = new Date()):
     moonUnderfoot: underfoot ? iso(underfoot) : null,
     moonPhaseName: phaseName,
     moonIlluminationPct: illumPct,
+    nextFullMoon: findNextFullMoon(date),
     tidbits: buildTidbits(date, illum.phase, illumPct),
     solunar: solunarPeriods(date, lat, lon),
     source: "SunCalc (USNO-compatible)",

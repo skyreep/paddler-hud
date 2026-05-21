@@ -188,6 +188,15 @@ function computeBriefingData(ctx: BriefingContext): BriefingData {
     const tFmt = (iso: string | null | undefined) =>
       iso ? fmtTime(iso, tf) : null;
 
+    // Lead the section with the current moon phase + illumination so a
+    // reader gets the "what is the moon doing" answer at a glance,
+    // before the timing details.
+    events.push({
+      icon: "🌙",
+      label: "Moon phase",
+      value: `${astro.moonPhaseName} · ${astro.moonIlluminationPct}% lit`,
+    });
+
     const sr = tFmt(astro.sunrise);
     if (sr) events.push({ icon: "🌅", label: "Sunrise", value: sr });
     const ss = tFmt(astro.sunset);
@@ -205,6 +214,16 @@ function computeBriefingData(ctx: BriefingContext): BriefingData {
         value: `${h}h ${String(m).padStart(2, "0")}m`,
       });
     }
+
+    // Trailing "next full moon" row — handy for paddlers planning
+    // around spring tides. Uses the same friendly formatting as the
+    // dashboard tile.
+    events.push({
+      icon: "🌕",
+      label: "Next full",
+      value: formatNextFullMoonForEmail(astro.nextFullMoon),
+    });
+
     if (events.length > 0) sunMoon = events;
   }
 
@@ -297,11 +316,58 @@ function computeBriefingData(ctx: BriefingContext): BriefingData {
   };
 }
 
+/** Tropical-cyclone alert matchers, ranked worst-first. We surface
+ *  these with paddler-action-oriented copy (instead of the generic
+ *  "Severe weather alert" headline) because they imply a categorically
+ *  different decision — not "consider postponing today's paddle," but
+ *  "stop planning and start storm prep." Match against the NWS `event`
+ *  field; the first matching pattern wins. */
+const TROPICAL_VERDICTS: Array<{
+  match: RegExp;
+  tone: "bad" | "warn";
+  headline: string;
+  detail: string;
+}> = [
+  // Warnings — dangerous conditions expected within 36 hours.
+  { match: /hurricane\s+warning|hurricane\s+force\s+wind\s+warning/i,
+    tone: "bad",  headline: "Hurricane warning — do not launch",
+    detail: "Hurricane conditions expected within 36 hours. Stay off the water and finish storm prep." },
+  { match: /storm\s+surge\s+warning/i,
+    tone: "bad",  headline: "Storm surge warning — coastal flooding expected",
+    detail: "Life-threatening inundation possible. Stay off the water and away from low-lying coast." },
+  { match: /tropical\s+storm\s+warning/i,
+    tone: "bad",  headline: "Tropical storm warning — stay off the water",
+    detail: "Tropical-storm-force winds expected within 36 hours." },
+  // Watches — conditions possible within 48 hours. Still serious.
+  { match: /hurricane\s+watch/i,
+    tone: "bad",  headline: "Hurricane watch — finalize storm prep",
+    detail: "Hurricane conditions possible within 48 hours. Do not plan to paddle." },
+  { match: /storm\s+surge\s+watch/i,
+    tone: "warn", headline: "Storm surge watch — coastal flooding possible",
+    detail: "Inundation possible within 48 hours. Avoid low-lying launches and monitor updates." },
+  { match: /tropical\s+storm\s+watch/i,
+    tone: "warn", headline: "Tropical storm watch — monitor closely",
+    detail: "Tropical-storm-force winds possible within 48 hours. Hold off on day plans." },
+  // Informational tropical statements — system in the area, conditions
+  // not necessarily imminent but worth knowing about.
+  { match: /tropical\s+depression|tropical\s+cyclone\s+statement|hurricane\s+local\s+statement/i,
+    tone: "warn", headline: "Tropical advisory active",
+    detail: "Tropical system in the area — check details below before paddling." },
+];
+
 /** Compute the one-line go/no-go verdict shown right under the header.
  *  Highest-severity signal wins; ties broken by user-relevance for
  *  paddling (tropical > severe weather > advisories > wind > calm). */
 function computeVerdict(ctx: BriefingContext): BriefingData["verdict"] {
   const alerts = ctx.alerts?.alerts ?? [];
+
+  // Tropical alerts get their own copy — categorically different
+  // decision-making than generic severe weather.
+  for (const tv of TROPICAL_VERDICTS) {
+    if (alerts.some((a) => tv.match.test(a.event || a.headline || ""))) {
+      return { headline: tv.headline, detail: tv.detail, tone: tv.tone };
+    }
+  }
 
   // Severity rank: extreme = worst.
   const hasExtreme = alerts.some((a) =>
@@ -333,7 +399,10 @@ function computeVerdict(ctx: BriefingContext): BriefingData["verdict"] {
     };
   }
 
-  // No alerts — use wind as the verdict driver.
+  // No alerts — use wind as the verdict driver. Thresholds stay in
+  // knots internally (meteorological standard, matches small-craft
+  // advisory criteria), but display follows the user's wind-unit
+  // preference so the verdict matches the units they see elsewhere.
   const hourly = ctx.weather?.hourly ?? [];
   if (hourly.length > 0) {
     const dayStart = stationDayStart(ctx.today);
@@ -343,24 +412,28 @@ function computeVerdict(ctx: BriefingContext): BriefingData["verdict"] {
       return ms >= dayStart && ms < dayEnd;
     });
     const hoursToUse = todayHours.length > 0 ? todayHours : hourly.slice(0, 24);
-    const peak = hoursToUse.reduce((p, h) => h.windKt > p ? h.windKt : p, 0);
-    if (peak >= 22) {
+    const peakKt = hoursToUse.reduce((p, h) => h.windKt > p ? h.windKt : p, 0);
+    const wu = ctx.prefs.unitsWind;
+    const peakStr = wu === "mph"
+      ? `${Math.round(ktToMph(peakKt))} mph`
+      : `${Math.round(peakKt)} kt`;
+    if (peakKt >= 22) {
       return {
         headline: "Breezy day — small-craft caution",
-        detail: `Peaks near ${Math.round(peak)} kt today. Consider staying close to shore or postponing.`,
+        detail: `Peaks near ${peakStr} today. Consider staying close to shore or postponing.`,
         tone: "warn",
       };
     }
-    if (peak >= 15) {
+    if (peakKt >= 15) {
       return {
         headline: "Moderate winds",
-        detail: `Up to ~${Math.round(peak)} kt expected today. Check the wind summary below before launching.`,
+        detail: `Up to ~${peakStr} expected today. Check the wind summary below before launching.`,
         tone: "good",
       };
     }
     return {
       headline: "Light winds, paddle-able",
-      detail: `Peak winds around ${Math.round(peak)} kt today — calm to moderate conditions.`,
+      detail: `Peak winds around ${peakStr} today — calm to moderate conditions.`,
       tone: "good",
     };
   }
@@ -677,6 +750,19 @@ function escapeHtml(s: string): string {
 /** Stricter escape for attribute values like href. */
 function escapeAttr(s: string): string {
   return escapeHtml(s);
+}
+
+/** Compact next-full-moon string for the email's Sun & Moon row.
+ *  Tighter than the dashboard version because the value column is
+ *  narrow — drop the parenthetical days when the date label already
+ *  conveys the answer. */
+function formatNextFullMoonForEmail(n: { iso: string; daysAway: number; name: string }): string {
+  if (n.daysAway < 0.5) return `${n.name} tonight`;
+  if (n.daysAway < 1.5) return `${n.name} tomorrow`;
+  const d = new Date(n.iso);
+  const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const days = Math.round(n.daysAway);
+  return `${n.name} · ${dateLabel} (${days}d)`;
 }
 
 function padRight(s: string, n: number): string {
