@@ -3,6 +3,7 @@ import AdvisoryBanner from "@/components/tiles/AdvisoryBanner";
 import RightNow from "@/components/tiles/RightNow";
 import WindNowTile from "@/components/tiles/WindNowTile";
 import MapTile from "@/components/tiles/MapTile";
+import ChartTile from "@/components/tiles/ChartTile";
 import RadarTile from "@/components/tiles/RadarTile";
 import TideTile from "@/components/tiles/TideTile";
 import TideMonthTile from "@/components/tiles/TideMonthTile";
@@ -144,6 +145,7 @@ export default async function Home({
           )}
           {wind && <WindNowTile wind={wind} prefs={initialPreferences} />}
           <MapTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
+          <ChartTile lat={station.lat} lon={station.lon} displayName={station.displayName} />
           {tides && <TideTile tides={tides} stationNote={station.tideStationNote} liveTideFt={water?.observedHeight ?? null} prefs={initialPreferences} />}
           {currents && <CurrentTile currents={currents} prefs={initialPreferences} />}
           {tides && <TideMonthTile tides={tides} prefs={initialPreferences} />}
