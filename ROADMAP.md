@@ -52,7 +52,7 @@ Power-user and convenience features. The kind of things active paddlers will pay
 - GPS heading tracking on satellite map (the "navigate with this open" mode)
 - Custom data-source selection per location (per-location wind/tide/obs picker)
 - Custom alerts: SMS or push when wind drops below X, tide crosses Y, or an alert fires for a saved zone
-- Higher-resolution radar (longer animation timeline, smoother frames)
+- **Pro Weather tile** — forecast radar (reliable nowcast everywhere), wind streamlines, multi-layer toggles (precip, wind, temp, clouds, pressure). The Windy-style visualizations free users don't get.
 
 ### Not gated (philosophical choices)
 
@@ -63,6 +63,14 @@ Power-user and convenience features. The kind of things active paddlers will pay
 ## Future premium-tier features
 
 Pipeline of ideas for post-launch development. Roughly ordered by user value.
+
+0. **Premium weather visualizations (Windy-style)** — A separate "Pro Weather" tile that goes well beyond what the free radar can offer. Three sub-features, layered:
+   - **Forecast radar** — actual nowcast/forecast precipitation animation. Two paths to pick between:
+     - **RainViewer paid tier** ($25/mo) — drop-in replacement for our current overlay with reliable nowcast in all US regions. Lowest effort.
+     - **NOAA HRRR simulated reflectivity** — free but requires a tile-rendering pipeline (GRIB2 → PNG tiles → CDN). 1–2 days of work to set up. Best long-term economics.
+   - **Multi-layer toggles** — wind speed, wind gusts, precipitation, temperature, cloud cover, pressure isobars. Most are available from Open-Meteo's tile endpoints or can be derived from forecast points.
+   - **Animated wind streamlines (the Windy hero feature)** — particle-flow visualization of wind direction/speed across the map. JS libraries exist (windy.com is open-source-adjacent; `leaflet-velocity` renders GRIB-style wind fields). Hardest to ship but visually striking.
+   - **Implementation hint**: consider just embedding Windy's iframe initially. They allow non-commercial embeds; commercial use needs a paid agreement. Cheap MVP to validate the premium feature before building from scratch.
 
 1. **Trip planning** — drop waypoints, get tide-aware route suggestions ("launch within this window for slack-water timing"), save trip templates for repeat paddles.
 2. **Track recording** — record your paddle as GPX, view past trips with stats (distance, pace, elapsed time). Storage cost is real but small.
@@ -79,13 +87,11 @@ Pipeline of ideas for post-launch development. Roughly ordered by user value.
 These improvements are blocking the paid rollout because they undermine the value proposition of the product or limit the addressable market.
 
 ### 1. Improved weather radar
-**Current pain points**: futurecast never loads, zoom range is constrained, frame transitions are large discrete jumps instead of smooth animation, default playback speed is too fast to read.
+**Status**: Mostly done. Cross-fade animation, zoom-to-z14 with upscaling, slower uniform playback all shipped. Radar timer-leak bug (multiplying timers under React StrictMode) fixed.
 
-**Investigation areas**:
-- RainViewer nowcast/forecast API — confirm we're parsing the future-frames list correctly, or pivot to NOAA MRMS / NWS QPF for forecast frames.
-- Tile zoom caps — RainViewer tops out at z=10 native; Leaflet should be configured with `maxNativeZoom: 10` and a higher `maxZoom` so it upscales gracefully.
-- Frame smoothing — fade-cross between frames instead of swapping, slow default playback to ~600ms/frame, longer pause on the "now" frame.
-- Optional paid tier of RainViewer for 5-min frame intervals (currently ~10 min on free).
+**Remaining limitation**: RainViewer's free nowcast doesn't reliably cover the SE US (confirmed empty for Georgia paddling locations). The retry logic still polls in case coverage appears, but in practice futurecast will be empty for our primary user base. UI gracefully hides forecast-related elements when frames are unavailable.
+
+**Forecast radar is now deferred to premium tier** (see "Premium-tier weather visualizations" below).
 
 ### 2. National-scale timezone support
 Tidevisor today assumes America/New_York for most "today" math (briefing emails, tile-month tide windows, station-day calculations). To support West Coast and inland paddlers, this must become per-location.
