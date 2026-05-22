@@ -82,9 +82,3 @@ export const PLANS: PlanDef[] = [
     isOneTime: true,
   },
 ];
-isplayPrice: "$59",
-    cadence: "once, forever",
-    isOneTime: true,
-  },
-];
-];

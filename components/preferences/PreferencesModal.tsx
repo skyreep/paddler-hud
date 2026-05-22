@@ -248,6 +248,69 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
           </div>
         )}
 
+        {/* Tidevisor Pro section — pinned to the top so the upsell and
+            beta-code redemption are the first things signed-in users
+            see. Signed-in only because there's nothing to redeem
+            against a guest session. */}
+        {isSignedIn && (
+          <Section label="Tidevisor Pro">
+            {!isPremium && (
+              <div style={proPromptBox}>
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  Unlock unlimited locations, daily briefing emails, GPS
+                  tracking, and more.
+                </div>
+                <a href="/upgrade" style={proLink} onClick={onClose}>
+                  See plans →
+                </a>
+              </div>
+            )}
+            <form onSubmit={handleRedeem} style={{ marginTop: 10 }}>
+              <label
+                htmlFor="comp-code-input"
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}
+              >
+                Got a code? Redeem it for free Pro access.
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  id="comp-code-input"
+                  type="text"
+                  value={codeInput}
+                  onChange={(e) => {
+                    setCodeInput(e.target.value);
+                    setCodeError(null);
+                    setCodeSuccess(null);
+                  }}
+                  placeholder="e.g. BETA-2026"
+                  disabled={codeBusy}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  style={codeInputStyle}
+                />
+                <button
+                  type="submit"
+                  disabled={codeBusy || !codeInput.trim()}
+                  style={codeBtnStyle}
+                >
+                  {codeBusy ? "…" : "Redeem"}
+                </button>
+              </div>
+              {codeError && (
+                <div style={{ fontSize: 12, color: "#c44", marginTop: 6 }}>
+                  {codeError}
+                </div>
+              )}
+              {codeSuccess && (
+                <div style={{ fontSize: 12, color: "var(--accent-2)", marginTop: 6 }}>
+                  {codeSuccess}
+                </div>
+              )}
+            </form>
+          </Section>
+        )}
+
         <Section label="Theme">
           <Segmented
             value={prefs.theme}
@@ -362,69 +425,6 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
               saving={layoutSaving}
               saveError={layoutError}
             />
-          </Section>
-        )}
-
-        {/* Tidevisor Pro section — signed-in only. Free users get a
-            short upsell + a redeem field for beta codes. Paid/comp
-            users still see the redeem field (stacking comp codes is
-            allowed) but with a different framing line. */}
-        {isSignedIn && (
-          <Section label="Tidevisor Pro">
-            {!isPremium && (
-              <div style={proPromptBox}>
-                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  Unlock unlimited locations, daily briefing emails, GPS
-                  tracking, and more.
-                </div>
-                <a href="/upgrade" style={proLink} onClick={onClose}>
-                  See plans →
-                </a>
-              </div>
-            )}
-            <form onSubmit={handleRedeem} style={{ marginTop: 10 }}>
-              <label
-                htmlFor="comp-code-input"
-                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}
-              >
-                Got a code? Redeem it for free Pro access.
-              </label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  id="comp-code-input"
-                  type="text"
-                  value={codeInput}
-                  onChange={(e) => {
-                    setCodeInput(e.target.value);
-                    setCodeError(null);
-                    setCodeSuccess(null);
-                  }}
-                  placeholder="e.g. BETA-2026"
-                  disabled={codeBusy}
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  style={codeInputStyle}
-                />
-                <button
-                  type="submit"
-                  disabled={codeBusy || !codeInput.trim()}
-                  style={codeBtnStyle}
-                >
-                  {codeBusy ? "…" : "Redeem"}
-                </button>
-              </div>
-              {codeError && (
-                <div style={{ fontSize: 12, color: "#c44", marginTop: 6 }}>
-                  {codeError}
-                </div>
-              )}
-              {codeSuccess && (
-                <div style={{ fontSize: 12, color: "var(--accent-2)", marginTop: 6 }}>
-                  {codeSuccess}
-                </div>
-              )}
-            </form>
           </Section>
         )}
 
@@ -619,22 +619,4 @@ function formatHourLabel(hour: number, format: TimeFormatPref): string {
   if (hour < 12) return `${hour}:00 AM`;
   if (hour === 12) return "12:00 PM";
   return `${hour - 12}:00 PM`;
-}
-(--bg-elev-2)", color: "var(--text)",
-  border: "1px solid var(--border-soft)", borderRadius: 10,
-  fontSize: 14, fontFamily: "inherit",
-  boxSizing: "border-box",
-  cursor: "pointer",
-};
-
-/** Hour-of-day formatter that respects the user's 12h/24h preference.
- *  Used by the daily-briefing send-time dropdown. */
-function formatHourLabel(hour: number, format: TimeFormatPref): string {
-  if (format === "24h") return `${String(hour).padStart(2, "0")}:00`;
-  if (hour === 0) return "12:00 AM";
-  if (hour < 12) return `${hour}:00 AM`;
-  if (hour === 12) return "12:00 PM";
-  return `${hour - 12}:00 PM`;
-}
-12}:00 PM`;
 }

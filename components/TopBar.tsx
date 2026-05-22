@@ -5,6 +5,7 @@ import LocationPicker from "./LocationPicker";
 import AccountMenu from "./auth/AccountMenu";
 import PreferencesModal from "./preferences/PreferencesModal";
 import WelcomeModal from "./onboarding/WelcomeModal";
+import BetaBanner from "./onboarding/BetaBanner";
 import { refreshHud } from "@/app/actions";
 import type { CurrentUser } from "@/lib/auth";
 import type { ResolvedLocation, UserLocation, UserPreferences } from "@/lib/types";
@@ -273,6 +274,13 @@ export default function TopBar({
         onSetupBriefing={welcomeToBriefing}
         userName={currentUser?.name ?? null}
       />
+
+      {/* First-visit beta banner. Self-gating via localStorage so we
+          don't need to pipe any state through here — it just renders
+          once per device on the first paint and dismisses itself
+          afterwards. Lives at this level (vs. wrapped in something)
+          so it lands at z-index 10000 above the topbar. */}
+      <BetaBanner />
     </>
   );
 }
@@ -299,4 +307,18 @@ const iconBtn: React.CSSProperties = {
   background: "var(--bg-elev-2)", border: "1px solid var(--border-soft)",
   color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
   cursor: "pointer",
+};
+ll) off the right edge of the
+  // viewport on iPhone-sized screens.
+  minWidth: 0,
+  maxWidth: 200, cursor: "pointer",
+  fontFamily: "inherit",
+};
+const iconBtn: React.CSSProperties = {
+  width: 36, height: 36, borderRadius: 10,
+  background: "var(--bg-elev-2)", border: "1px solid var(--border-soft)",
+  color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
+  cursor: "pointer",
+};
+nter",
 };

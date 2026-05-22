@@ -71,9 +71,9 @@ export default function WelcomeModal({
         </div>
 
         <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 16px", lineHeight: 1.5 }}>
-          Your account&apos;s set up with the default Lowcountry locations
-          (Tybee, Hilton Head, Beaufort, Charleston) and a starter set of
-          river gauges. Two quick things will make this yours:
+          Your account&apos;s set up with Tybee Island as a starter
+          location and a handful of regional river gauges. Two quick
+          things will make this yours:
         </p>
 
         <button type="button" onClick={onSetupLocation} style={methodBtn}>
