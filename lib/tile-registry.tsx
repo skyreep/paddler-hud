@@ -24,7 +24,12 @@ import type { ReactNode } from "react";
 import RightNow from "@/components/tiles/RightNow";
 import WindNowTile from "@/components/tiles/WindNowTile";
 import MapTile from "@/components/tiles/MapTile";
-import ChartTile from "@/components/tiles/ChartTile";
+// Nautical chart tile removed from the active set — the ArcGIS embed
+// was unreliable and the feature properly belongs inside a future
+// trip-planning surface, not as a dashboard thumbnail. The component
+// (components/tiles/ChartTile.tsx) is kept on disk for when that
+// feature lands.
+// import ChartTile from "@/components/tiles/ChartTile";
 import RadarTile from "@/components/tiles/RadarTile";
 import TideTile from "@/components/tiles/TideTile";
 import TideMonthTile from "@/components/tiles/TideMonthTile";
@@ -211,18 +216,6 @@ export const TILE_REGISTRY: TileEntry[] = [
     name: "Solunar",
     description: "Major/minor feeding periods for paddler-anglers.",
     render: (ctx) => <SolunarTile periods={ctx.astro.solunar} prefs={ctx.prefs} />,
-  },
-  // Nautical chart kept at the bottom of the default order because it's
-  // an iframe embed of ArcGIS — slow to first paint and not the kind of
-  // thing most users look at every session. Users who want it higher
-  // can reorder via the layout editor.
-  {
-    id: "chart",
-    name: "Nautical Chart",
-    description: "Official NOAA ENC chart via ArcGIS Online.",
-    render: (ctx) => (
-      <ChartTile lat={ctx.station.lat} lon={ctx.station.lon} displayName={ctx.station.displayName} />
-    ),
   },
 ];
 

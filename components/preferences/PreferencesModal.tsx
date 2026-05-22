@@ -114,8 +114,20 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
   }, [open]);
 
   /** Apply a partial update locally, persist (DB + localStorage as
-   *  appropriate), and apply any side effects (theme to <html>). */
+   *  appropriate), and apply any side effects (theme to <html>).
+   *
+   *  Rollback contract: if the server-side save rejects (e.g. the
+   *  premium gate on daily briefing fires for a free user), we revert
+   *  both the optimistic React state AND the side-effects (localStorage
+   *  + the theme attribute on <html>). Without that revert the toggle
+   *  would appear to have "stuck" even though the DB never accepted
+   *  the change, which is exactly the bug that confused testers
+   *  flipping the briefing on without Pro. */
   async function updateOne<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) {
+    // Snapshot the previous value before applying optimistically so
+    // we can roll back cleanly on a server rejection.
+    const previousValue = prefs[key];
+
     // Optimistic local state.
     setPrefs((p) => ({ ...p, [key]: value }));
     setErrorMsg(null);
@@ -142,6 +154,21 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
       const result = await updatePreferences({ [key]: value } as Partial<UserPreferences>);
       setSaving(false);
       if (!result.ok) {
+        // Server rejected — undo the optimistic React state, then
+        // undo the localStorage + theme side-effects. Order matters:
+        // restore the React state first so a re-render with the
+        // correct value flushes before anything visual changes.
+        setPrefs((p) => ({ ...p, [key]: previousValue }));
+        try {
+          if (key === "theme") localStorage.setItem(LS_THEME, previousValue as string);
+          if (key === "unitsWind") localStorage.setItem(LS_WIND, previousValue as string);
+          if (key === "unitsTemp") localStorage.setItem(LS_TEMP, previousValue as string);
+          if (key === "unitsHeight") localStorage.setItem(LS_HEIGHT, previousValue as string);
+          if (key === "timeFormat") localStorage.setItem(LS_TIME, previousValue as string);
+        } catch { /* private mode / quota — ignore */ }
+        if (key === "theme") {
+          applyTheme(previousValue as ThemeMode);
+        }
         setErrorMsg(result.error ?? "Couldn't save preference.");
         return;
       }
