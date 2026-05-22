@@ -110,10 +110,3 @@ const small: React.CSSProperties = {
   lineHeight: 1.6,
 };
 
-const small: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-faint)",
-  lineHeight: 1.6,
-};
-
-};

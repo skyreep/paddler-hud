@@ -308,17 +308,4 @@ const iconBtn: React.CSSProperties = {
   color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
   cursor: "pointer",
 };
-ll) off the right edge of the
-  // viewport on iPhone-sized screens.
-  minWidth: 0,
-  maxWidth: 200, cursor: "pointer",
-  fontFamily: "inherit",
-};
-const iconBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 10,
-  background: "var(--bg-elev-2)", border: "1px solid var(--border-soft)",
-  color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
-  cursor: "pointer",
-};
-nter",
-};
+

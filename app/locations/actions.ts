@@ -474,20 +474,4 @@ export async function reorderLocations(orderedIds: string[]): Promise<LocationAc
     };
   }
 }
- (failed?.error) {
-      return { ok: false, error: failed.error.message };
-    }
 
-    revalidatePath("/", "layout");
-    return { ok: true, locations: await listLocations(supabase) };
-  } catch (err) {
-    console.error("[locations] reorderLocations crashed:", err);
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Unexpected error reordering locations.",
-    };
-  }
-}
-    };
-  }
-}
