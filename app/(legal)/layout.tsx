@@ -72,6 +72,9 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         color: "var(--text-faint)",
       }}>
         <div style={{ marginBottom: 6 }}>
+          <Link href="/help" style={{ color: "var(--text-muted)", textDecoration: "none", marginRight: 12 }}>
+            Help
+          </Link>
           <Link href="/privacy" style={{ color: "var(--text-muted)", textDecoration: "none", marginRight: 12 }}>
             Privacy Policy
           </Link>

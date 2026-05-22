@@ -165,7 +165,9 @@ export default async function Home({
           Data: NOAA CO-OPS, NWS, USGS, NHC, EPA AirNow, Open-Meteo (UV + marine model), SunCalc.<br />
           Always verify conditions with official sources before launching.
           <div style={{ marginTop: 10 }}>
-            <a href="/privacy" style={{ color: "var(--text-muted)", textDecoration: "none", marginRight: 10 }}>Privacy</a>
+            <a href="/help" style={{ color: "var(--text-muted)", textDecoration: "none", marginRight: 10 }}>Help</a>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <a href="/privacy" style={{ color: "var(--text-muted)", textDecoration: "none", marginLeft: 10, marginRight: 10 }}>Privacy</a>
             <span style={{ opacity: 0.5 }}>·</span>
             <a href="/terms" style={{ color: "var(--text-muted)", textDecoration: "none", marginLeft: 10 }}>Terms</a>
           </div>
