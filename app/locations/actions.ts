@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveLocationCandidate } from "@/lib/location-resolver";
 import type { ResolvedLocationBundle } from "@/lib/location-resolver";
 import { revalidatePath } from "next/cache";
+import { getSubscription, computeIsPremium } from "@/lib/subscriptions";
 import type { UserLocation, WindStationRef } from "@/lib/types";
 import type {
   LocationActionResult,
@@ -21,7 +22,16 @@ import type {
   GeocoderHit,
 } from "@/lib/location-action-result";
 
+/** Hard cap on saved locations. Pro users hit this; free users hit
+ *  MAX_LOCATIONS_FREE first. Set high enough that the cap is never
+ *  the *thing* paddlers buy Pro for — Pro is about unlocking the
+ *  second, third, fourth location, not about getting to 50. */
 const MAX_LOCATIONS = 6;
+/** Free-tier cap. Free users get exactly one saved location with full
+ *  data resolution — see ROADMAP.md "Free tier". Bumping this to 2
+ *  would weaken the upgrade trigger; bumping it to 0 would punish guests
+ *  who sign up. One is the deliberate sweet spot. */
+const MAX_LOCATIONS_FREE = 1;
 
 type ServerClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -191,7 +201,21 @@ export async function addLocation(bundle: ResolvedLocationBundle): Promise<Locat
     }
 
     const existing = await listLocations(supabase);
-    if (existing.length >= MAX_LOCATIONS) {
+    // Premium gate: free users get one location, Pro users get up to
+    // MAX_LOCATIONS. The first save (existing.length === 0) is always
+    // allowed regardless of tier so a fresh signup can save their home
+    // spot before hitting any paywall.
+    const sub = await getSubscription(userId);
+    const premium = sub ? computeIsPremium(sub) : false;
+    const cap = premium ? MAX_LOCATIONS : MAX_LOCATIONS_FREE;
+    if (existing.length >= cap) {
+      if (!premium) {
+        return {
+          ok: false,
+          error:
+            "Free accounts get one saved location. Upgrade to Tidevisor Pro at /upgrade for unlimited locations — or redeem a beta code in Preferences.",
+        };
+      }
       return { ok: false, error: `Already at the ${MAX_LOCATIONS}-location cap. Remove one to add another.` };
     }
 

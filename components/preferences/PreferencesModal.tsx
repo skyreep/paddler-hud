@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { updatePreferences } from "@/app/preferences/actions";
+import { redeemCompCode } from "@/app/account/actions";
 import TileLayoutEditor from "./TileLayoutEditor";
 import type {
   HeightUnits,
@@ -43,6 +44,11 @@ interface Props {
   /** Whether the current visitor is signed in. Controls whether changes
    *  go through the server action (DB) or stay in localStorage. */
   isSignedIn: boolean;
+  /** Whether this user is currently on Pro (paid, lifetime, or comp).
+   *  Used to nudge free users toward /upgrade in the daily-briefing
+   *  section ("Daily briefing is a Pro feature"). Optional — defaults
+   *  to false so older callers that haven't updated still compile. */
+  isPremium?: boolean;
 }
 
 // localStorage keys. Keep aligned with the keys the rest of the app
@@ -53,7 +59,7 @@ const LS_TEMP = "phud_units_temp";
 const LS_HEIGHT = "phud_units_height";
 const LS_TIME = "phud_time_format";
 
-export default function PreferencesModal({ open, onClose, initialPreferences, isSignedIn }: Props) {
+export default function PreferencesModal({ open, onClose, initialPreferences, isSignedIn, isPremium = false }: Props) {
   const router = useRouter();
   const [prefs, setPrefs] = useState<UserPreferences>(initialPreferences);
   const [saving, setSaving] = useState(false);
@@ -63,6 +69,13 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
   // saving/error state to avoid stepping on the single-toggle path.
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutError, setLayoutError] = useState<string | null>(null);
+  // Comp code redemption: free-text input, async submit, separate
+  // success / error states. Reset on modal close so re-opening doesn't
+  // show a stale "Code applied" message.
+  const [codeInput, setCodeInput] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
 
   // When the modal opens, sync local state from the server prop. For
   // guests, prefer localStorage over the prop (server defaults aren't
@@ -136,6 +149,53 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
       // in places that read from the server (e.g. theme cookie sync — future).
       router.refresh();
     }
+  }
+
+  /** Reset comp-code state when the modal closes so users don't see a
+   *  stale "Code applied" toast next time they open it. */
+  useEffect(() => {
+    if (open) return;
+    setCodeInput("");
+    setCodeBusy(false);
+    setCodeError(null);
+    setCodeSuccess(null);
+  }, [open]);
+
+  /** Submit the entered code. On success, router.refresh() so the
+   *  Pro state in the topbar / dashboard updates immediately. */
+  async function handleRedeem(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (codeBusy) return;
+    const code = codeInput.trim();
+    if (!code) {
+      setCodeError("Enter a code to redeem.");
+      return;
+    }
+    setCodeBusy(true);
+    setCodeError(null);
+    setCodeSuccess(null);
+    const result = await redeemCompCode(code);
+    setCodeBusy(false);
+    if (!result.ok) {
+      setCodeError(result.error ?? "Couldn't redeem that code.");
+      return;
+    }
+    const compUntilDate = result.compUntil
+      ? new Date(result.compUntil).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : null;
+    setCodeSuccess(
+      result.daysGranted
+        ? `Got ${result.daysGranted} days of Tidevisor Pro${compUntilDate ? ` (until ${compUntilDate})` : ""}.`
+        : "Code applied.",
+    );
+    setCodeInput("");
+    // Pull fresh server data so the topbar's Pro badge and any
+    // premium-gated UI light up without a manual reload.
+    router.refresh();
   }
 
   /** Persist a new tile layout. Signed-in only — for guests we hide
@@ -305,6 +365,69 @@ export default function PreferencesModal({ open, onClose, initialPreferences, is
           </Section>
         )}
 
+        {/* Tidevisor Pro section — signed-in only. Free users get a
+            short upsell + a redeem field for beta codes. Paid/comp
+            users still see the redeem field (stacking comp codes is
+            allowed) but with a different framing line. */}
+        {isSignedIn && (
+          <Section label="Tidevisor Pro">
+            {!isPremium && (
+              <div style={proPromptBox}>
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  Unlock unlimited locations, daily briefing emails, GPS
+                  tracking, and more.
+                </div>
+                <a href="/upgrade" style={proLink} onClick={onClose}>
+                  See plans →
+                </a>
+              </div>
+            )}
+            <form onSubmit={handleRedeem} style={{ marginTop: 10 }}>
+              <label
+                htmlFor="comp-code-input"
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}
+              >
+                Got a code? Redeem it for free Pro access.
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  id="comp-code-input"
+                  type="text"
+                  value={codeInput}
+                  onChange={(e) => {
+                    setCodeInput(e.target.value);
+                    setCodeError(null);
+                    setCodeSuccess(null);
+                  }}
+                  placeholder="e.g. BETA-2026"
+                  disabled={codeBusy}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  style={codeInputStyle}
+                />
+                <button
+                  type="submit"
+                  disabled={codeBusy || !codeInput.trim()}
+                  style={codeBtnStyle}
+                >
+                  {codeBusy ? "…" : "Redeem"}
+                </button>
+              </div>
+              {codeError && (
+                <div style={{ fontSize: 12, color: "#c44", marginTop: 6 }}>
+                  {codeError}
+                </div>
+              )}
+              {codeSuccess && (
+                <div style={{ fontSize: 12, color: "var(--accent-2)", marginTop: 6 }}>
+                  {codeSuccess}
+                </div>
+              )}
+            </form>
+          </Section>
+        )}
+
         <p style={{ fontSize: 11, color: "var(--text-faint)", margin: "16px 0 0", textAlign: "center" }}>
           Changes save automatically.
         </p>
@@ -441,6 +564,43 @@ const notice: React.CSSProperties = {
   background: "var(--bg-elev-2)",
   border: "1px solid var(--border-soft)", borderRadius: 10,
   fontSize: 13, color: "var(--text)",
+};
+const proPromptBox: React.CSSProperties = {
+  padding: "10px 12px",
+  background: "var(--bg-elev-2)",
+  border: "1px solid var(--border-soft)",
+  borderRadius: 10,
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  gap: 10,
+};
+const proLink: React.CSSProperties = {
+  fontSize: 12, fontWeight: 600,
+  color: "var(--accent)",
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+};
+const codeInputStyle: React.CSSProperties = {
+  flex: 1, minWidth: 0,
+  padding: "10px 12px",
+  background: "var(--bg-elev-2)",
+  border: "1px solid var(--border-soft)",
+  borderRadius: 10,
+  color: "var(--text)",
+  fontSize: 14, fontFamily: "inherit",
+  letterSpacing: ".5px",
+  textTransform: "uppercase",
+};
+const codeBtnStyle: React.CSSProperties = {
+  padding: "10px 16px",
+  background: "var(--accent)",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  fontSize: 13, fontWeight: 600,
+  fontFamily: "inherit",
+  cursor: "pointer",
+  flexShrink: 0,
 };
 const briefingHourSelect: React.CSSProperties = {
   display: "block", width: "100%", padding: "10px 12px",

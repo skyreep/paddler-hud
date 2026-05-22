@@ -15,6 +15,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { loadLocations, resolveLocation } from "@/lib/locations";
 import { loadGaugeIds } from "@/lib/gauges";
 import { loadPreferences } from "@/lib/preferences";
+import { loadSubscription } from "@/lib/subscriptions";
 
 export default async function Home({
   searchParams,
@@ -30,14 +31,21 @@ export default async function Home({
   // loadGaugeIds / loadPreferences each do at most one Supabase round-trip
   // and gracefully fall back to the hardcoded defaults if anything goes
   // wrong, so they're safe to await before the upstream weather/tide fetches.
-  const [currentUser, locationsResult, gaugesResult, prefsResult] = await Promise.all([
+  const [currentUser, locationsResult, gaugesResult, prefsResult, subResult] = await Promise.all([
     getCurrentUser().catch(() => null),
     loadLocations(),
     loadGaugeIds(params.gauges ?? null),
     loadPreferences(),
+    loadSubscription().catch(() => null),
   ]);
   const { locations, primary, userRows: userLocations } = locationsResult;
   const initialPreferences = prefsResult.preferences;
+  // Subscription state powers Upgrade/Manage-subscription UI in TopBar
+  // and gates premium-only features. Falls back to "free" if the load
+  // crashed — we never want a transient DB failure to lock out a paid user
+  // permanently, but we also never want to fake premium on errors.
+  const isPremium = subResult?.isPremium ?? false;
+  const hasStripeCustomer = !!subResult?.subscription.stripeCustomerId;
   const station = resolveLocation(params.station, locations, primary);
   // The URL key only persists when it actually resolves; if the user passed
   // a stale or unknown station key, drop it so the URL matches what's shown.
@@ -107,6 +115,8 @@ export default async function Home({
         primaryKey={primary.key}
         userLocations={userLocations}
         initialPreferences={initialPreferences}
+        isPremium={isPremium}
+        hasStripeCustomer={hasStripeCustomer}
       />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>

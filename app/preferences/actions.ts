@@ -7,6 +7,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getSubscription, computeIsPremium } from "@/lib/subscriptions";
 import type {
   HeightUnits,
   TempUnits,
@@ -72,6 +73,20 @@ export async function updatePreferences(
   if (patch.unitsHeight !== undefined) row.units_height = patch.unitsHeight;
   if (patch.timeFormat !== undefined) row.time_format = patch.timeFormat;
   if (patch.dailyBriefingEnabled !== undefined) {
+    // Premium gate: enabling the daily briefing requires Pro. Disabling
+    // (setting to false) is always allowed — never lock someone out of
+    // turning a feature OFF, only ON. This mirrors the principle in
+    // ROADMAP.md: "the gate is on the save action, not the config UI".
+    if (patch.dailyBriefingEnabled === true) {
+      const sub = await getSubscription(userData.user.id);
+      const premium = sub ? computeIsPremium(sub) : false;
+      if (!premium) {
+        return {
+          ok: false,
+          error: "Daily briefing email is a Tidevisor Pro feature. Upgrade at /upgrade or redeem a code.",
+        };
+      }
+    }
     row.daily_briefing_enabled = patch.dailyBriefingEnabled;
   }
   if (patch.dailyBriefingHour !== undefined) {

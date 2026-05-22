@@ -28,12 +28,22 @@ interface Props {
   // the user_preferences row for signed-in users. Passed to the
   // preferences modal as its starting state.
   initialPreferences: UserPreferences;
+  // Premium state, resolved server-side from subscriptions table. Drives
+  // the Upgrade/Manage menu items in AccountMenu and gates premium-only
+  // UI surfaces in PreferencesModal (comp code redemption is gated on
+  // signed-in; daily briefing save is gated on premium via the action).
+  isPremium: boolean;
+  // Whether the user has a Stripe customer (i.e. paid through Checkout
+  // at some point). Used to decide whether to show "Manage subscription"
+  // — comp-only premium users have no billing portal.
+  hasStripeCustomer: boolean;
 }
 
 type ThemeMode = "light" | "dark" | "auto";
 
 export default function TopBar({
-  locationName, stationKey, currentUser, locations, primaryKey, userLocations, initialPreferences,
+  locationName, stationKey, currentUser, locations, primaryKey, userLocations,
+  initialPreferences, isPremium, hasStripeCustomer,
 }: Props) {
   const router = useRouter();
   // Single source of truth — theme mode. The pre-paint script in layout.tsx
@@ -232,7 +242,11 @@ export default function TopBar({
 
         {/* Account button — pill "Sign in" for guests, avatar + dropdown
             for signed-in users. Renders nothing if Supabase isn't configured. */}
-        <AccountMenu initialUser={currentUser} />
+        <AccountMenu
+          initialUser={currentUser}
+          isPremium={isPremium}
+          hasStripeCustomer={hasStripeCustomer}
+        />
       </header>
 
       <LocationPicker
@@ -249,6 +263,7 @@ export default function TopBar({
         onClose={() => setPrefsOpen(false)}
         initialPreferences={initialPreferences}
         isSignedIn={isSignedIn}
+        isPremium={isPremium}
       />
 
       <WelcomeModal

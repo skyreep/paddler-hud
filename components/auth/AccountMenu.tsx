@@ -14,19 +14,30 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { signOut } from "@/app/auth/actions";
+import { createPortalSession } from "@/app/upgrade/actions";
 import SignInModal from "./SignInModal";
 import type { CurrentUser } from "@/lib/auth";
 
 interface Props {
   initialUser: CurrentUser | null;
+  /** Whether the current user is on Pro (any flavor — paid sub, lifetime,
+   *  or active comp window). Drives the Upgrade / Manage subscription
+   *  menu item label. Defaults to false for safety. */
+  isPremium?: boolean;
+  /** Whether the user has a Stripe customer record (i.e. has been
+   *  through Checkout at least once). Drives whether "Manage subscription"
+   *  is shown vs. hidden — comp-only premium users have no Stripe record
+   *  and shouldn't see a portal link that'd 404. */
+  hasStripeCustomer?: boolean;
 }
 
-export default function AccountMenu({ initialUser }: Props) {
+export default function AccountMenu({ initialUser, isPremium = false, hasStripeCustomer = false }: Props) {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(initialUser);
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Listen for cross-tab auth changes (sign-in in tab A should reflect
@@ -100,6 +111,27 @@ export default function AccountMenu({ initialUser }: Props) {
       );
     }
   }, []);
+
+  async function handleManageBilling() {
+    setMenuOpen(false);
+    setOpeningPortal(true);
+    try {
+      const result = await createPortalSession();
+      if (!result.ok || !result.url) {
+        // Quietly surface the failure as a console error — most failure
+        // modes here are config-side (no STRIPE_SECRET_KEY) or no
+        // customer yet, both of which the user can't act on.
+        console.error("[AccountMenu] portal session failed:", result.error);
+        setOpeningPortal(false);
+        return;
+      }
+      // Full nav — leaving Next for Stripe-hosted UI.
+      window.location.href = result.url;
+    } catch (err) {
+      console.error("[AccountMenu] portal session crashed:", err);
+      setOpeningPortal(false);
+    }
+  }
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -192,6 +224,55 @@ export default function AccountMenu({ initialUser }: Props) {
             )}
           </div>
 
+          {/* Subscription line — small pill showing current state. The
+              label varies by tier so users can tell at a glance whether
+              they're on free, comp, or paid. */}
+          {isPremium ? (
+            <div style={proRow}>
+              <span style={proBadge}>Pro</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Tidevisor Pro · active
+              </span>
+            </div>
+          ) : (
+            <div style={proRow}>
+              <span style={{ ...proBadge, background: "var(--bg-elev-2)", color: "var(--text-muted)" }}>
+                Free
+              </span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Free tier
+              </span>
+            </div>
+          )}
+
+          {/* Upgrade / Manage subscription. We show one or the other:
+              - Free users → "Upgrade to Pro" link to /upgrade
+              - Premium users with a Stripe customer → "Manage subscription"
+                opens the billing portal
+              - Premium-via-comp users (no Stripe customer) → nothing —
+                they have no billing to manage. */}
+          {!isPremium && (
+            <a
+              role="menuitem"
+              href="/upgrade"
+              style={{ ...menuItem, color: "var(--accent)", textDecoration: "none" }}
+              onClick={() => setMenuOpen(false)}
+            >
+              Upgrade to Pro
+            </a>
+          )}
+          {isPremium && hasStripeCustomer && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleManageBilling}
+              disabled={openingPortal}
+              style={menuItem}
+            >
+              {openingPortal ? "Opening…" : "Manage subscription"}
+            </button>
+          )}
+
           {/* Preferences live in the topbar's gear button (visible to both
               guests and signed-in users). We could also expose it here as
               a redundant entry, but keeping the dropdown focused on
@@ -240,6 +321,23 @@ const avatarBtn: React.CSSProperties = {
   aspectRatio: "1",
   padding: 0,
   overflow: "hidden",
+};
+const proRow: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "6px 10px 10px",
+  marginBottom: 4,
+  borderBottom: "1px solid var(--border-soft)",
+};
+const proBadge: React.CSSProperties = {
+  display: "inline-block",
+  padding: "2px 8px",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: ".5px",
+  textTransform: "uppercase",
+  background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+  color: "white",
+  borderRadius: 999,
 };
 const menuItem: React.CSSProperties = {
   display: "block", width: "100%",
