@@ -1,12 +1,8 @@
 "use client";
 
-// Client island for the upgrade page. Handles:
-//   - "Subscribe" / "Buy" button click → createCheckoutSession → redirect
-//   - Per-card pending state while Stripe round-trips
-//   - "Manage subscription" portal redirect for existing customers
-//
-// The static pricing copy is rendered server-side (in app/upgrade/page.tsx);
-// this component only owns the interactive bits.
+// Client island for the upgrade page. Handles Subscribe/Buy click ->
+// createCheckoutSession -> redirect, plus the Manage subscription
+// portal redirect for existing customers.
 
 import { useState } from "react";
 import { createCheckoutSession, createPortalSession } from "./actions";
@@ -18,13 +14,9 @@ interface PlanProps {
   label: string;
   displayPrice: string;
   cadence: string;
-  /** Marketing bullets shown under the price. */
   bullets: string[];
-  /** True when this card should be visually emphasized (Annual = recommended). */
   highlighted?: boolean;
-  /** Disable the buttons entirely (signed-out users). */
   disabled?: boolean;
-  /** Reason for disabling (e.g. "Sign in to upgrade") — shown in place of price. */
   disabledReason?: string;
 }
 
@@ -32,7 +24,6 @@ interface Props {
   isSignedIn: boolean;
   isPremium: boolean;
   hasStripeCustomer: boolean;
-  /** Active tier label for the "you're currently on …" banner. */
   currentTier: "free" | "monthly" | "annual" | "lifetime" | "comp";
   plans: PlanProps[];
 }
@@ -44,17 +35,11 @@ export default function PlanCards({
   currentTier,
   plans,
 }: Props) {
-  // Per-tier loading state — only one checkout can be in flight at a time
-  // but keying by tier gives nicer button copy ("Loading…" on the clicked
-  // card only).
   const [loadingTier, setLoadingTier] = useState<Tier | "portal" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleBuy(tier: Tier) {
     if (!isSignedIn) {
-      // Bounce to home so AccountMenu can prompt sign-in. We keep the
-      // intent in a query param so a future "auto-resume checkout after
-      // sign-in" flow has the hook it needs.
       window.location.href = `/?signin=1&intent=upgrade&tier=${tier}`;
       return;
     }
@@ -66,8 +51,6 @@ export default function PlanCards({
       setLoadingTier(null);
       return;
     }
-    // Stripe-hosted checkout. Full navigation (not router.push) because
-    // we're leaving Next.
     window.location.href = res.url;
   }
 
@@ -99,8 +82,8 @@ export default function PlanCards({
             {currentTier === "comp" && " (comp window)"}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            Thanks for supporting Tidevisor. You can change plans or update your
-            payment method any time.
+            Thanks for supporting Tidevisor. You can change plans or update
+            your payment method any time.
           </div>
           {hasStripeCustomer && (
             <button
@@ -183,8 +166,6 @@ export default function PlanCards({
     </>
   );
 }
-
-// ─── Styles ────────────────────────────────────────────────────────────────
 
 const grid: React.CSSProperties = {
   display: "grid",

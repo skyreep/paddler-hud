@@ -1,19 +1,7 @@
 "use server";
 
-// Admin server actions for the comp-code system. Gated by checking the
-// caller's user_id against ADMIN_USER_IDS (a comma-separated list in
-// env). Anyone whose id isn't in that list gets "Not authorized" — no
-// information leakage about whether the actions exist.
-//
-// These actions use the admin (service-role) Supabase client because
-// the comp_codes table has zero public RLS policies — even SELECT is
-// denied to authenticated users. That's intentional: comp codes are
-// secret tokens, and an enumerable codes table would leak them all.
-//
-// Design choice: actions take simple typed params and return result
-// objects (no throwing). The page is a server component that calls
-// listCodes() to render the list, and the client island calls
-// createCode() / disableCode() in response to clicks.
+// Admin server actions for the comp-code system. Gated by checking
+// the caller's user_id against ADMIN_USER_IDS env var.
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -36,8 +24,6 @@ export interface ListCodesResult {
 }
 
 export interface CreateCodeInput {
-  /** Code text — case is preserved as entered but redemption is
-   *  case-insensitive. Trimmed before insert. */
   code: string;
   description?: string;
   durationDays: number;
@@ -56,10 +42,6 @@ export interface SimpleResult {
   error?: string;
 }
 
-/** Verify the calling user is an admin per ADMIN_USER_IDS env var.
- *  Returns the user id on success, or an error result. The env var
- *  should be a comma-separated list of Supabase auth user IDs — copy
- *  them from the Supabase Dashboard > Authentication > Users page. */
 async function requireAdmin(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const supabase = await createClient();
   if (!supabase) return { ok: false, error: "Auth not configured." };
@@ -70,8 +52,6 @@ async function requireAdmin(): Promise<{ ok: true; userId: string } | { ok: fals
     .map((s) => s.trim())
     .filter(Boolean);
   if (allow.length === 0) {
-    // Misconfigured server. Don't leak that the env var exists or what
-    // it expects — just deny.
     console.error("[admin] ADMIN_USER_IDS not configured");
     return { ok: false, error: "Not authorized." };
   }
@@ -81,8 +61,6 @@ async function requireAdmin(): Promise<{ ok: true; userId: string } | { ok: fals
   return { ok: true, userId: data.user.id };
 }
 
-/** List all comp codes for the admin UI. Includes use counts so the
- *  admin can see at a glance which campaigns have traction. */
 export async function listCodes(): Promise<ListCodesResult> {
   const auth = await requireAdmin();
   if (!auth.ok) return { ok: false, error: auth.error };
@@ -113,21 +91,17 @@ export async function listCodes(): Promise<ListCodesResult> {
   return { ok: true, codes };
 }
 
-/** Create a new comp code. Returns 23505 (unique_violation) as a
- *  user-friendly "code already exists" message; everything else
- *  bubbles up as the raw error. */
 export async function createCode(input: CreateCodeInput): Promise<CreateCodeResult> {
   const auth = await requireAdmin();
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  // Validate inputs before hitting the DB so the user gets clearer errors.
   const code = (input.code ?? "").trim();
   if (!code) return { ok: false, error: "Code text is required." };
   if (code.length > 100) return { ok: false, error: "Code is too long (max 100 chars)." };
 
   const days = Math.round(input.durationDays);
   if (!Number.isFinite(days) || days < 1 || days > 366) {
-    return { ok: false, error: "Duration must be 1–366 days." };
+    return { ok: false, error: "Duration must be 1-366 days." };
   }
 
   const maxUses = input.maxUses ?? null;
@@ -182,10 +156,6 @@ export async function createCode(input: CreateCodeInput): Promise<CreateCodeResu
   };
 }
 
-/** Disable a code by setting expires_at to "now". This preserves
- *  existing redemptions (users keep their comp window) but stops any
- *  new redemptions. Hard delete is rare enough that we keep that to
- *  manual SQL in the dashboard. */
 export async function disableCode(code: string): Promise<SimpleResult> {
   const auth = await requireAdmin();
   if (!auth.ok) return { ok: false, error: auth.error };
@@ -207,9 +177,6 @@ export async function disableCode(code: string): Promise<SimpleResult> {
   return { ok: true };
 }
 
-/** Helper exposed for the page so it can decide whether to render
- *  the admin UI or a 403 page without making the caller import
- *  the admin client. */
 export async function isCurrentUserAdmin(): Promise<boolean> {
   const auth = await requireAdmin();
   return auth.ok;

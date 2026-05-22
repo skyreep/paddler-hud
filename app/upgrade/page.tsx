@@ -1,14 +1,6 @@
-// Tidevisor Pro upgrade page. Server component:
-//   - Loads current user + subscription state
-//   - Renders the three pricing cards (Monthly / Annual / Lifetime)
-//   - Surfaces an "already on Pro" banner with portal link for active users
-//
-// Interactive bits (button clicks → Stripe Checkout / Portal redirects)
-// live in PlanCards.tsx because server components can't carry useState.
-//
-// SEO: indexable. Title + description set below; legal/footer is intentionally
-// minimal so the page reads like a focused upgrade prompt, not a marketing
-// landing page.
+// Tidevisor Pro upgrade page. Server component that loads user +
+// subscription state, renders the three pricing cards, and surfaces
+// an "already on Pro" banner with portal link for active users.
 
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -24,10 +16,6 @@ export const metadata: Metadata = {
     "and the Pro Weather tile. $2.99/mo, $19/year, or $59 lifetime.",
 };
 
-// Per-plan marketing bullets. Keep tight — three or four punchy items
-// per card reads better than ten exhaustive ones. The "differences"
-// between tiers are price + commitment; the feature set is identical
-// across all three Pro plans, so bullets are mostly shared.
 const SHARED_BULLETS = [
   "Unlimited saved locations",
   "Daily briefing email",
@@ -42,9 +30,6 @@ const PLAN_NOTES: Record<"monthly" | "annual" | "lifetime", string[]> = {
   lifetime: [...SHARED_BULLETS, "One-time payment — never renews"],
 };
 
-/** Map current subscription tier to the label the cards expect. "comp"
- *  is surfaced separately so the banner can say "comp window" rather
- *  than mislabeling it as a paid tier. */
 function deriveCurrentTierLabel(
   isPremium: boolean,
   tier: "free" | "monthly" | "annual" | "lifetime",
@@ -117,31 +102,30 @@ export default async function UpgradePage() {
 
         <div style={faq}>
           <FaqItem
-            q="What&rsquo;s included in the free tier?"
-            a="One saved location with full data resolution, every dashboard tile, satellite map with one-shot &ldquo;center on me,&rdquo; layout customization, and unit/theme/time preferences. We want the free tier to be honestly useful — not a teaser."
+            q="What's included in the free tier?"
+            a="Three saved locations with full data resolution, every dashboard tile, satellite map with one-shot center-on-me, layout customization, and unit/theme/time preferences."
           />
           <FaqItem
             q="Can I switch plans later?"
-            a="Yes. Open the billing portal (via Manage subscription) to upgrade, downgrade, or cancel. Lifetime customers can also upgrade from monthly/annual any time."
+            a="Yes. Open the billing portal (via Manage subscription) to upgrade, downgrade, or cancel."
           />
           <FaqItem
             q="What happens if I cancel?"
-            a="You keep Pro access through the end of the period you already paid for. After that you drop back to the free tier — your saved locations and preferences stay intact."
+            a="You keep Pro access through the end of the period you already paid for. After that you drop back to the free tier; saved locations and preferences stay intact."
           />
           <FaqItem
             q="Do you support refunds?"
-            a={`Yes — within 7 days of purchase, no questions asked. Email contact@tidevisor.com.`}
+            a="Yes, within 7 days of purchase, no questions asked. Email contact@tidevisor.com."
           />
           <FaqItem
             q="Got a beta-tester code?"
-            a="Sign in, open Preferences from the account menu, and paste it into the Redeem code field. You&rsquo;ll get 30 days of Pro on the house."
+            a="Sign in, open Preferences from the account menu, and paste it into the Redeem code field for 30 days of Pro."
           />
         </div>
 
         <p style={legal}>
-          Payments are processed by Stripe. We never see your card details.
-          See our{" "}
-          <Link href="/privacy" style={inlineLink}>Privacy Policy</Link>
+          Payments are processed by Stripe. We never see your card details.{" "}
+          See our <Link href="/privacy" style={inlineLink}>Privacy Policy</Link>
           {" "}and{" "}
           <Link href="/terms" style={inlineLink}>Terms of Service</Link>.
         </p>
@@ -158,12 +142,10 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   return (
     <details style={faqRow}>
       <summary style={faqQ}>{q}</summary>
-      <div style={faqA} dangerouslySetInnerHTML={{ __html: a }} />
+      <div style={faqA}>{a}</div>
     </details>
   );
 }
-
-// ─── Styles ────────────────────────────────────────────────────────────────
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",

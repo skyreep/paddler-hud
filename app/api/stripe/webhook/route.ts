@@ -1,39 +1,6 @@
-// Stripe webhook handler. This is the ONLY trustworthy way to grant
-// premium — the success-redirect URL on /upgrade/success is just a
-// friendly UX surface, never used to mutate the subscriptions table.
-//
-// Stripe signs every event with STRIPE_WEBHOOK_SECRET; we verify the
-// signature before doing anything. Failed verification → 400 and we
-// don't touch the DB. Successful verification → we use the service-role
-// Supabase client (RLS-bypassing) to update subscriptions.
-//
-// Events we care about, ordered by importance:
-//
-//   checkout.session.completed
-//     Fires after the user pays. For subscriptions, the session has
-//     `subscription` pointing at the new sub object; for one-time
-//     lifetime purchases, it has `payment_intent`. We use the
-//     metadata.supabase_user_id we attached during session creation
-//     to identify the user, and the line items' price ID to determine
-//     the tier.
-//
-//   customer.subscription.updated
-//   customer.subscription.deleted
-//     Fires on renewals, plan changes, cancellations, dunning state
-//     changes. Keeps the local status + tier + current_period_end in
-//     sync with Stripe's source of truth. `.deleted` also fires when
-//     a sub fully terminates (after grace period); we set status to
-//     `canceled` and clear the tier back to free.
-//
-//   invoice.paid
-//     Belt-and-suspenders renewal handler — `customer.subscription.updated`
-//     usually carries the new current_period_end, but invoice.paid is
-//     the most reliable signal that money actually changed hands. We
-//     re-read the subscription from Stripe to refresh fields.
-//
-// Edge runtime is NOT used: the Supabase JS client and Stripe SDK both
-// expect Node, and we need the raw request body for signature
-// verification. Node runtime (default) it is.
+// Stripe webhook handler. The ONLY trustworthy way to grant premium —
+// the success-redirect URL on /upgrade/success is just UX, never used
+// to mutate the subscriptions table.
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -41,8 +8,6 @@ import Stripe from "stripe";
 import { stripeClient, tierForPriceId } from "@/lib/stripe-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Make sure Next doesn't try to body-parse for us. We need the raw bytes
-// for signature verification — Stripe signs over the exact request body.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -74,9 +39,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Verify the signature. We can't use req.json() — Stripe signs over
-  // the raw body, and any reformatting (even insignificant whitespace
-  // changes from JSON.parse + JSON.stringify) breaks verification.
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
     return NextResponse.json({ error: "Missing stripe-signature header." }, { status: 400 });
@@ -92,8 +54,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Webhook Error: ${msg}` }, { status: 400 });
   }
 
-  // Service-role client. Required because subscriptions has no public
-  // write policies (users can only read their own row, never write).
   const admin = createAdminClient();
   if (!admin) {
     console.error("[stripe-webhook] admin client not configured");
@@ -115,33 +75,19 @@ export async function POST(req: NextRequest) {
       case "invoice.paid":
         await handleInvoicePaid(event.data.object as Stripe.Invoice, config.stripe, admin);
         break;
-      // Everything else is acknowledged but no-op'd. Stripe will retry
-      // on 5xx, so always return 200 here.
       default:
-        // Useful breadcrumb during early ops — comment out when noisy.
-        // console.log("[stripe-webhook] ignoring", event.type);
         break;
     }
   } catch (err) {
     console.error(`[stripe-webhook] handler crashed for ${event.type}:`, err);
-    // Return 500 so Stripe retries. Idempotent handlers below mean
-    // retries are safe even if the failure was halfway through a write.
     return NextResponse.json({ error: "Handler failed." }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
 }
 
-// ─── Handlers ──────────────────────────────────────────────────────────────
-
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 
-/**
- * checkout.session.completed → user just paid. For subscription plans,
- * the session payload references the new subscription, which we then
- * use to populate tier + period_end. For one-time lifetime purchases
- * (mode=payment), we set lifetime_purchased_at and tier='lifetime'.
- */
 async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
   stripe: Stripe,
@@ -159,14 +105,9 @@ async function handleCheckoutCompleted(
   if (session.mode === "subscription" && session.subscription) {
     const subId =
       typeof session.subscription === "string" ? session.subscription : session.subscription.id;
-    // Pull the full sub to get the actual price ID + period end. The
-    // session payload sometimes has these expanded, sometimes not —
-    // re-fetching is the simple path.
     const sub = await stripe.subscriptions.retrieve(subId);
     await upsertFromSubscription(sub, customerId, admin);
   } else if (session.mode === "payment") {
-    // Lifetime purchase. The session has line_items not always expanded,
-    // so re-fetch with expansion to get the price.
     const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
       expand: ["line_items.data.price"],
     });
@@ -195,23 +136,11 @@ async function handleCheckoutCompleted(
   }
 }
 
-/**
- * customer.subscription.{created,updated} → keep tier/status/period in
- * sync. Fires on renewals, plan changes, dunning state changes, and
- * cancellation (status flips to "canceled" while the period_end is
- * still in the future = user keeps premium until end of paid period).
- */
 async function handleSubscriptionUpdated(sub: Stripe.Subscription, admin: AdminClient) {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   await upsertFromSubscription(sub, customerId, admin);
 }
 
-/**
- * customer.subscription.deleted → sub fully terminated (after grace
- * period). Drop back to free tier. We leave stripe_customer_id and
- * stripe_subscription_id in place for history; tier and status are
- * the gating fields.
- */
 async function handleSubscriptionDeleted(sub: Stripe.Subscription, admin: AdminClient) {
   const userId = await userIdFromSubscription(sub, admin);
   if (!userId) return;
@@ -226,24 +155,14 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, admin: AdminC
     .eq("user_id", userId);
 }
 
-/**
- * invoice.paid → a renewal or initial charge cleared. Refresh the
- * subscription row in case current_period_end advanced. Idempotent
- * with .subscription.updated; we run both because invoice.paid is the
- * canonical "money moved" signal and sometimes precedes the sub
- * update event by a beat.
- */
 async function handleInvoicePaid(
   invoice: Stripe.Invoice,
   stripe: Stripe,
   admin: AdminClient,
 ) {
-  // Older Stripe SDK types had `subscription` on the Invoice. The 18.x
-  // typings define it on Invoice in some contexts but not others, so
-  // we read defensively via an unknown cast rather than relying on it.
   const invoiceSubField = (invoice as unknown as { subscription?: string | Stripe.Subscription | null })
     .subscription;
-  if (!invoiceSubField) return; // one-off invoice (lifetime); nothing to refresh
+  if (!invoiceSubField) return;
   const subId =
     typeof invoiceSubField === "string" ? invoiceSubField : invoiceSubField.id;
   const sub = await stripe.subscriptions.retrieve(subId);
@@ -251,13 +170,6 @@ async function handleInvoicePaid(
   await upsertFromSubscription(sub, customerId, admin);
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-/**
- * Look up our user_id from a Stripe subscription. Prefers the metadata
- * we set on session creation; falls back to a lookup by stripe_customer_id
- * for older subs created before metadata was set.
- */
 async function userIdFromSubscription(sub: Stripe.Subscription, admin: AdminClient): Promise<string | null> {
   const fromMeta = sub.metadata?.supabase_user_id;
   if (fromMeta) return fromMeta;
@@ -270,9 +182,6 @@ async function userIdFromSubscription(sub: Stripe.Subscription, admin: AdminClie
   return data?.user_id ?? null;
 }
 
-/** Core subscription-state writer. Used by every event that carries a
- *  Stripe.Subscription object. Sets tier, status, period_end, and the
- *  Stripe IDs for future webhook routing. */
 async function upsertFromSubscription(
   sub: Stripe.Subscription,
   customerId: string | null,
@@ -283,17 +192,12 @@ async function upsertFromSubscription(
     console.warn("[stripe-webhook] no user_id mappable for sub", sub.id);
     return;
   }
-  // First line item is our one-and-only — we don't sell multi-item
-  // subscriptions.
   const priceId = sub.items.data[0]?.price?.id;
   const tier = priceId ? tierForPriceId(priceId) : null;
   if (!tier) {
     console.warn(`[stripe-webhook] sub ${sub.id} has unknown price ID ${priceId}`);
   }
 
-  // current_period_end is in seconds since epoch (Stripe convention).
-  // The 18.x types moved this onto `items.data[].current_period_end` in
-  // some contexts but it's still present on the subscription too.
   const periodEndUnix =
     (sub as unknown as { current_period_end?: number }).current_period_end ??
     sub.items.data[0]?.current_period_end ??
@@ -310,10 +214,6 @@ async function upsertFromSubscription(
         stripe_customer_id: customerId,
         stripe_subscription_id: sub.id,
         status: sub.status,
-        // Don't overwrite tier with "free" — if Stripe sends us an
-        // unrecognized price ID for some reason, we keep whatever
-        // tier we had before rather than silently downgrading the
-        // user mid-renewal.
         ...(tier ? { tier } : {}),
         current_period_end: periodEndIso,
         updated_at: new Date().toISOString(),

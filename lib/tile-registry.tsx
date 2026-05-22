@@ -52,7 +52,7 @@ import type {
   WeatherResponse,
   WindResponse,
 } from "@/lib/types";
-import type { UserGauge } from "@/lib/gauges";
+import type { UserGauge } from "@/lib/types";
 
 /** Everything a tile's render factory might need to decide whether to
  *  render and what to pass downstream. Page-level data lives here in
@@ -126,14 +126,6 @@ export const TILE_REGISTRY: TileEntry[] = [
     description: "Esri satellite imagery with GPS + heading tracking.",
     render: (ctx) => (
       <MapTile lat={ctx.station.lat} lon={ctx.station.lon} displayName={ctx.station.displayName} />
-    ),
-  },
-  {
-    id: "chart",
-    name: "Nautical Chart",
-    description: "Official NOAA ENC chart via ArcGIS Online.",
-    render: (ctx) => (
-      <ChartTile lat={ctx.station.lat} lon={ctx.station.lon} displayName={ctx.station.displayName} />
     ),
   },
   {
@@ -219,6 +211,18 @@ export const TILE_REGISTRY: TileEntry[] = [
     name: "Solunar",
     description: "Major/minor feeding periods for paddler-anglers.",
     render: (ctx) => <SolunarTile periods={ctx.astro.solunar} prefs={ctx.prefs} />,
+  },
+  // Nautical chart kept at the bottom of the default order because it's
+  // an iframe embed of ArcGIS — slow to first paint and not the kind of
+  // thing most users look at every session. Users who want it higher
+  // can reorder via the layout editor.
+  {
+    id: "chart",
+    name: "Nautical Chart",
+    description: "Official NOAA ENC chart via ArcGIS Online.",
+    render: (ctx) => (
+      <ChartTile lat={ctx.station.lat} lon={ctx.station.lon} displayName={ctx.station.displayName} />
+    ),
   },
 ];
 

@@ -151,5 +151,4 @@ export async function updatePreferences(
       dailyBriefingHour: Number(saved.daily_briefing_hour ?? 6),
       updatedAt: String(saved.updated_at ?? new Date().toISOString()),
     },
-  };
-}
+  };}

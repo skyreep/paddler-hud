@@ -620,3 +620,21 @@ function formatHourLabel(hour: number, format: TimeFormatPref): string {
   if (hour === 12) return "12:00 PM";
   return `${hour - 12}:00 PM`;
 }
+(--bg-elev-2)", color: "var(--text)",
+  border: "1px solid var(--border-soft)", borderRadius: 10,
+  fontSize: 14, fontFamily: "inherit",
+  boxSizing: "border-box",
+  cursor: "pointer",
+};
+
+/** Hour-of-day formatter that respects the user's 12h/24h preference.
+ *  Used by the daily-briefing send-time dropdown. */
+function formatHourLabel(hour: number, format: TimeFormatPref): string {
+  if (format === "24h") return `${String(hour).padStart(2, "0")}:00`;
+  if (hour === 0) return "12:00 AM";
+  if (hour < 12) return `${hour}:00 AM`;
+  if (hour === 12) return "12:00 PM";
+  return `${hour - 12}:00 PM`;
+}
+12}:00 PM`;
+}

@@ -203,3 +203,12 @@ function coerceTier(v: unknown): SubscriptionTier {
   if (v === "monthly" || v === "annual" || v === "lifetime") return v;
   return "free";
 }
+des(v as string) ? (v as SubscriptionStatus) : null;
+}
+
+function coerceTier(v: unknown): SubscriptionTier {
+  if (v === "monthly" || v === "annual" || v === "lifetime") return v;
+  return "free";
+}
+";
+}

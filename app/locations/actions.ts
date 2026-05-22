@@ -27,11 +27,10 @@ import type {
  *  the *thing* paddlers buy Pro for — Pro is about unlocking the
  *  second, third, fourth location, not about getting to 50. */
 const MAX_LOCATIONS = 6;
-/** Free-tier cap. Free users get exactly one saved location with full
- *  data resolution — see ROADMAP.md "Free tier". Bumping this to 2
- *  would weaken the upgrade trigger; bumping it to 0 would punish guests
- *  who sign up. One is the deliberate sweet spot. */
-const MAX_LOCATIONS_FREE = 1;
+/** Free-tier cap. Free users get a small handful of locations — enough
+ *  to cover a "home spot + two regulars" pattern without making them
+ *  feel cramped. Pro removes the cap up to MAX_LOCATIONS. */
+const MAX_LOCATIONS_FREE = 3;
 
 type ServerClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -213,7 +212,7 @@ export async function addLocation(bundle: ResolvedLocationBundle): Promise<Locat
         return {
           ok: false,
           error:
-            "Free accounts get one saved location. Upgrade to Tidevisor Pro at /upgrade for unlimited locations — or redeem a beta code in Preferences.",
+            `Free accounts get ${MAX_LOCATIONS_FREE} saved locations. Upgrade to Tidevisor Pro at /upgrade for more — or redeem a beta code in Preferences.`,
         };
       }
       return { ok: false, error: `Already at the ${MAX_LOCATIONS}-location cap. Remove one to add another.` };
@@ -472,6 +471,23 @@ export async function reorderLocations(orderedIds: string[]): Promise<LocationAc
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Unexpected error reordering locations.",
+    };
+  }
+}
+ (failed?.error) {
+      return { ok: false, error: failed.error.message };
+    }
+
+    revalidatePath("/", "layout");
+    return { ok: true, locations: await listLocations(supabase) };
+  } catch (err) {
+    console.error("[locations] reorderLocations crashed:", err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Unexpected error reordering locations.",
+    };
+  }
+}
     };
   }
 }

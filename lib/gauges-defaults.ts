@@ -5,12 +5,12 @@
 // causes a Next.js build error: "You're importing a module that depends
 // on 'next/headers' ... in the Pages Router."
 
-/** Default saved river gauges for first-load. Up to MAX_GAUGES USGS sites. */
+/** Default saved river gauges for first-load. Up to MAX_GAUGES USGS sites.
+ *  Trimmed to a tight, paddler-relevant set for the Georgia/SC region —
+ *  signed-in users curate their own list via the gauge editor. */
 export const DEFAULT_GAUGES = [
   "02198690",   // Ebenezer Creek nr Springfield, GA
   "02202500",   // Ogeechee River at Eden, GA
-  "02226160",   // Altamaha River nr Everett City, GA
-  "02316000",   // Suwannee River at White Springs, FL  (region edge)
   "02315500",   // Suwannee River at Fargo, GA
 ];
 

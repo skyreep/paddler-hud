@@ -1,13 +1,5 @@
-// Admin tool for managing Tidevisor Pro comp codes. Gated server-side:
-// every action checks ADMIN_USER_IDS, and this page double-checks
-// before rendering anything to avoid leaking that the admin tools exist.
-//
-// To grant yourself admin access:
-//   1. Sign in at least once so your auth user exists.
-//   2. Copy your user id from Supabase Dashboard > Authentication > Users.
-//   3. Set ADMIN_USER_IDS in env to that id (comma-separated for multiple
-//      admins). Don't prefix with NEXT_PUBLIC_ — this stays server-side.
-//   4. Redeploy / restart dev server.
+// Admin tool for managing Tidevisor Pro comp codes. Gated server-side
+// by checking ADMIN_USER_IDS env var.
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -21,22 +13,16 @@ export const metadata: Metadata = {
   robots: "noindex, nofollow",
 };
 
-// Disable static generation — the page depends on the signed-in user.
 export const dynamic = "force-dynamic";
 
 export default async function CompCodesAdminPage() {
   const user = await getCurrentUser();
   if (!user) {
-    // Punt to dashboard which will prompt sign-in. We don't render a
-    // dedicated /admin/sign-in flow because there are very few admins.
     redirect("/?signin=1");
   }
 
   const allowed = await isCurrentUserAdmin();
   if (!allowed) {
-    // Don't reveal that this URL exists. Same response as if the
-    // route 404'd would be nicer, but a 404 from a known route is
-    // awkward; redirect to dashboard quietly.
     redirect("/");
   }
 
@@ -80,8 +66,6 @@ export default async function CompCodesAdminPage() {
     </div>
   );
 }
-
-// ─── Styles ────────────────────────────────────────────────────────────────
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",

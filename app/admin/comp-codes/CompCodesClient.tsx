@@ -1,9 +1,5 @@
 "use client";
 
-// Client island for the admin comp-codes page. Renders the existing
-// codes table + a "create new code" form. All calls go through the
-// server actions in ./actions.ts which enforce admin-only access.
-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCode, disableCode } from "./actions";
@@ -19,8 +15,6 @@ export default function CompCodesClient({ initialCodes }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form state — keep everything as strings since the inputs are
-  // text/number. Parse on submit.
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
   const [durationDays, setDurationDays] = useState("30");
@@ -43,8 +37,6 @@ export default function CompCodesClient({ initialCodes }: Props) {
       setFormError(res.error ?? "Couldn't create code.");
       return;
     }
-    // Optimistic prepend so the admin sees the new code immediately;
-    // router.refresh() picks up canonical state on the next navigation.
     setCodes((prev) => [res.code!, ...prev]);
     setCode("");
     setDescription("");
@@ -219,8 +211,6 @@ function formatShortDate(iso: string): string {
     return iso;
   }
 }
-
-// ─── Styles ────────────────────────────────────────────────────────────────
 
 const form: React.CSSProperties = {
   background: "var(--bg-elev)",
