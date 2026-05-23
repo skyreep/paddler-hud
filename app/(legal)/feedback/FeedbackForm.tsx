@@ -17,19 +17,13 @@
 import { useState, useTransition } from "react";
 import { submitFeedback, type FeedbackKind } from "./actions";
 
-interface Props {
-  /** Pre-filled in the read-only email row so the user knows we have
-   *  their address attached without showing them a redundant input. */
-  userEmail: string | null;
-}
-
 const KIND_OPTIONS: { value: FeedbackKind; label: string; hint: string }[] = [
   { value: "bug",     label: "Bug report",     hint: "Something's broken or behaving wrong." },
   { value: "feature", label: "Feature request", hint: "An idea for something Tidevisor should do." },
   { value: "other",   label: "Other",           hint: "Anything else — questions, comments, etc." },
 ];
 
-export default function FeedbackForm({ userEmail }: Props) {
+export default function FeedbackForm() {
   const [kind, setKind] = useState<FeedbackKind>("bug");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -67,8 +61,8 @@ export default function FeedbackForm({ userEmail }: Props) {
         <div style={successTitle}>Thanks — we got it.</div>
         <p style={successBody}>
           Your feedback is in the queue. We read every submission. If we
-          need more detail to act on it, we&rsquo;ll email you at{" "}
-          <strong>{userEmail ?? "the address on your account"}</strong>.
+          need more detail to act on it, we&rsquo;ll email you at the
+          address on your account.
         </p>
         <button
           type="button"
@@ -155,11 +149,6 @@ export default function FeedbackForm({ userEmail }: Props) {
       />
       <div style={charCount}>
         {body.length} / 8000
-      </div>
-
-      {/* ── Email row (read-only, just informational) ────────────── */}
-      <div style={emailRow}>
-        Sent as <strong>{userEmail ?? "your account"}</strong>. We&rsquo;ll reply here if we need more info.
       </div>
 
       {/* ── Error ────────────────────────────────────────────────── */}
@@ -287,16 +276,6 @@ const charCount: React.CSSProperties = {
   color: "var(--text-faint)",
   textAlign: "right",
   marginTop: 2,
-};
-
-const emailRow: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-muted)",
-  background: "var(--bg-elev)",
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid var(--border-soft)",
-  margin: "12px 0 4px",
 };
 
 const errorBox: React.CSSProperties = {

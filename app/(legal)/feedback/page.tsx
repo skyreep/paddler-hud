@@ -50,14 +50,13 @@ export default async function FeedbackPage() {
 
       <p style={infoNote}>
         We read every submission. If we need more detail to act on it,
-        we&rsquo;ll email you back at{" "}
-        <strong>{user.email ?? "the address on your account"}</strong>.
-        For refunds or billing questions, email{" "}
+        we&rsquo;ll email you back at the address on your account. For
+        refunds or billing questions, email{" "}
         <a href={`mailto:${CONTACT_EMAIL}`} style={link}>{CONTACT_EMAIL}</a>{" "}
         directly &mdash; that gets handled faster than the queue.
       </p>
 
-      <FeedbackForm userEmail={user.email} />
+      <FeedbackForm />
 
       <p style={fineprint}>
         Submissions are tied to your account so we can follow up. We
