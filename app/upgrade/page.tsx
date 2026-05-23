@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 const SHARED_BULLETS = [
-  "Unlimited saved locations",
+  "Up to 15 saved locations (vs. 3 on free)",
   "Daily briefing email",
   "GPS heading + follow mode on the map",
   "Custom per-location data source picker",

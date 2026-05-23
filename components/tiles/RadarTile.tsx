@@ -559,9 +559,17 @@ export default function RadarTile({ lat, lon, displayName }: Props) {
             {tickMarks.map((t, i) => (
               <span key={i} style={{
                 whiteSpace: "nowrap",
+                // Tick alignment: leftmost tick aligns its LEFT edge to 0%,
+                // rightmost tick aligns its RIGHT edge to 100%, everything
+                // in between centers on its ratio. Without translateX(-100%)
+                // on the rightmost tick, the label's left edge lands at
+                // 100% and the text overflows the slider — which made the
+                // cyan "Now" label visually bleed past the bar's right
+                // edge when no forecast frames were loaded.
                 transform:
                   i === 0 ? "translateX(0)" :
-                  i === tickMarks.length - 1 ? "translateX(0)" : "translateX(-50%)",
+                  i === tickMarks.length - 1 ? "translateX(-100%)" :
+                  "translateX(-50%)",
                 position: "absolute", left: `${t.ratio * 100}%`,
                 fontWeight: t.label === "Now" ? 700 : 500,
                 color: t.label === "Now" ? "var(--accent-2)" : "var(--text-faint)",
@@ -626,4 +634,23 @@ function animateLayerOpacity(
     else if (onDone) onDone();
   };
   requestAnimationFrame(step);
+}
+start = performance.now();
+  function step(ts: number) {
+    if (!start) start = ts;
+    const elapsed = ts - start;
+    const t = Math.min(1, elapsed / durationMs);
+    try {
+      if (layer && typeof layer.setOpacity === "function") {
+        layer.setOpacity(from + (to - from) * t);
+      }
+    } catch {
+      // Layer may have been removed mid-animation — bail.
+      return;
+    }
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      onDone?.();
+    }
 }

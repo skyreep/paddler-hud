@@ -229,7 +229,7 @@ export default function HelpPage() {
       </p>
       <p><strong>What Pro includes:</strong></p>
       <ul style={ul}>
-        <li>Up to 6 saved locations (vs. 3 on free)</li>
+        <li>Up to 15 saved locations (vs. 3 on free)</li>
         <li>Daily briefing email — one-screen summary delivered at your chosen hour</li>
         <li>Custom per-location data source picker</li>
         <li>The future Pro Weather tile (forecast radar, wind streamlines, multi-layer toggles)</li>

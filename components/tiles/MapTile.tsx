@@ -41,8 +41,12 @@ type L = any;
 // User-marker palette — deliberately distinct from the location pin
 // (which uses --accent-2 / blue) so "where I am" and "where I'm
 // paddling" never get confused on the same map.
-const USER_COLOR = "#19c39a";          // teal-green
-const USER_CONE = "rgba(25,195,154,0.22)";
+// Marker palette tuned for visibility on satellite imagery. The old
+// teal cone disappeared over dark vegetation; warm orange + a dark
+// outline reads cleanly against vegetation, water, sand, and roads.
+const USER_COLOR = "#ff7a3d";          // warm orange — body of the marker dot
+const USER_CONE = "rgba(255,122,61,0.62)"; // semi-opaque fill for the heading cone
+const USER_CONE_STROKE = "#1a1a1a";    // dark outline so the cone pops against bright bg too
 
 export default function MapTile({ lat, lon, displayName }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,6 +67,12 @@ export default function MapTile({ lat, lon, displayName }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [tracking, setTracking] = useState(false);
   const [trackingErr, setTrackingErr] = useState<string | null>(null);
+  // Smoothed heading for the on-screen compass badge. Tracked in state
+  // (not just the ref used by the divIcon rebuild) so React knows when
+  // to re-render the badge readout. Throttled below so the orientation
+  // event firehose doesn't spam React with ~10 updates/sec.
+  const [headingDisplay, setHeadingDisplay] = useState<number | null>(null);
+  const lastHeadingPushRef = useRef(0);
 
   // Inject Leaflet's stylesheet once per page.
   useEffect(() => {
@@ -215,6 +225,15 @@ export default function MapTile({ lat, lon, displayName }: Props) {
         : null;
       if (raw == null || Number.isNaN(raw)) return;
       headingRef.current = smoothHeading(raw, headingRef.current);
+      // Push the smoothed heading into React state for the compass
+      // badge readout — but throttled to ~5Hz so we don't slam the
+      // reconciler. The marker rebuild below already runs per-frame,
+      // which is fine since it's just a divIcon swap.
+      const now = performance.now();
+      if (now - lastHeadingPushRef.current > 200) {
+        lastHeadingPushRef.current = now;
+        setHeadingDisplay(headingRef.current);
+      }
       // Throttle marker updates to one per animation frame — orientation
       // can fire 60Hz which is way more than the map needs.
       if (!rafScheduled) {
@@ -279,6 +298,11 @@ export default function MapTile({ lat, lon, displayName }: Props) {
       lastPosRef.current = null;
       headingRef.current = null;
       followRef.current = false;
+      // Drop the on-screen compass badge when tracking ends, otherwise
+      // a stale heading sticks around on the map after the user taps
+      // "Stop tracking".
+      setHeadingDisplay(null);
+      lastHeadingPushRef.current = 0;
     };
   }, [tracking]);
 
@@ -332,6 +356,64 @@ export default function MapTile({ lat, lon, displayName }: Props) {
             background: "var(--bg-elev-2)",
             color: "var(--text-muted)", fontSize: 13, padding: 16, textAlign: "center",
           }}>{err}</div>
+        )}
+
+        {/* Compass heading badge — visible only when actively tracking
+            AND a heading has been read. Positioned in the top-left so
+            it doesn't crowd the control cluster at top-right. The
+            inner needle rotates so the red tip always points to true
+            north relative to the user's current facing direction —
+            i.e. the badge gives the same visual feedback you'd get
+            from a real compass held flat in your hand. */}
+        {tracking && headingDisplay != null && (
+          <div
+            aria-label={`Heading ${Math.round(headingDisplay)} degrees`}
+            style={{
+              position: "absolute",
+              top: 10,
+              left: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 10px 6px 6px",
+              background: "rgba(7, 17, 26, 0.78)",
+              color: "white",
+              borderRadius: 999,
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: ".5px",
+              boxShadow: "0 2px 8px rgba(0,0,0,.35)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+              pointerEvents: "none",
+              zIndex: 500,
+            }}
+          >
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 28 28"
+              style={{
+                transform: `rotate(${-headingDisplay}deg)`,
+                transition: "transform .15s linear",
+              }}
+              aria-hidden
+            >
+              <circle cx="14" cy="14" r="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />
+              {/* North half — red tip */}
+              <path d="M14 3 L17 14 L14 12 L11 14 Z" fill="#e84a4a" />
+              {/* South half — light */}
+              <path d="M14 25 L11 14 L14 16 L17 14 Z" fill="rgba(255,255,255,0.85)" />
+              <text x="14" y="9.5" textAnchor="middle" fontSize="6" fill="white" fontWeight="700" fontFamily="sans-serif">N</text>
+            </svg>
+            <span>
+              {String(Math.round(headingDisplay)).padStart(3, "0")}°
+              <span style={{ marginLeft: 4, opacity: 0.85, fontSize: 11 }}>
+                {cardinalFromDegrees(headingDisplay)}
+              </span>
+            </span>
+          </div>
         )}
 
         {/* Floating control cluster — top-right corner */}
@@ -392,46 +474,74 @@ export default function MapTile({ lat, lon, displayName }: Props) {
  *  dot — still useful for "I'm here." */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildUserIcon(L: any, heading: number | null): any {
+  // Rotate the whole marker container around its center so the cone
+  // (drawn pointing up at 0deg) ends up pointing along the heading.
   const rotate = heading != null ? `transform:rotate(${heading.toFixed(0)}deg);` : "";
+
+  // SVG cone — wider + longer than the previous CSS-triangle version,
+  // with a solid dark stroke so it's legible against bright AND dark
+  // backgrounds. ViewBox is 60×60 with the triangle apex at (30,4) and
+  // base from (8,46) to (52,46): roughly a 60° field-of-view wedge.
   const cone = heading != null ? `
-    <div style="
-      position:absolute; bottom:50%; left:50%;
-      width:0; height:0;
-      border-left:22px solid transparent;
-      border-right:22px solid transparent;
-      border-bottom:34px solid ${USER_CONE};
-      transform:translateX(-50%);
-      pointer-events:none;
-    "></div>
+    <svg
+      width="60" height="60" viewBox="0 0 60 60"
+      style="
+        position:absolute; bottom:50%; left:50%;
+        transform:translateX(-50%);
+        pointer-events:none;
+        overflow:visible;
+      "
+      aria-hidden="true"
+    >
+      <path
+        d="M30 4 L52 46 L8 46 Z"
+        fill="${USER_CONE}"
+        stroke="${USER_CONE_STROKE}"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+        opacity="0.95"
+      />
+    </svg>
   ` : "";
   return L.divIcon({
     className: "phud-me-marker",
     html: `
-      <div style="position:relative; width:48px; height:48px; ${rotate} transform-origin:center center; pointer-events:none;">
+      <div style="position:relative; width:60px; height:60px; ${rotate} transform-origin:center center; pointer-events:none;">
         ${cone}
         <div style="
           position:absolute; top:50%; left:50%;
-          width:14px; height:14px; border-radius:50%;
+          width:16px; height:16px; border-radius:50%;
           background:${USER_COLOR};
           border:2px solid #fff;
-          box-shadow:0 0 0 1px ${USER_COLOR}, 0 2px 6px rgba(0,0,0,.4);
+          box-shadow:0 0 0 1.5px ${USER_CONE_STROKE}, 0 2px 8px rgba(0,0,0,.5);
           transform:translate(-50%, -50%);
           pointer-events:none;
         "></div>
       </div>
     `,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24],
+    iconSize: [60, 60],
+    iconAnchor: [30, 30],
   });
+}
+
+
+/** 16-point cardinal label for a heading in degrees. Used in the
+ *  compass badge readout so paddlers get the friendly "NE" alongside
+ *  the precise "047°". */
+function cardinalFromDegrees(deg: number): string {
+  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  const normalized = ((deg % 360) + 360) % 360;
+  return dirs[Math.round(normalized / 22.5) % 16];
 }
 
 /** Exponential smoothing for compass heading, wrap-aware so the
  *  marker doesn't spin the long way when the heading crosses the
- *  359°→0° boundary. Higher alpha = more responsive, less smooth. */
+ *  359°→0° boundary. */
 function smoothHeading(raw: number, prev: number | null, alpha = 0.25): number {
-  if (prev == null || Number.isNaN(prev)) return raw;
+  if (prev == null) return raw;
   let diff = raw - prev;
-  while (diff >  180) diff -= 360;
-  while (diff < -180) diff += 360;
-  return (prev + alpha * diff + 360) % 360;
+  if (diff > 180) diff -= 360;
+  else if (diff < -180) diff += 360;
+  const next = prev + alpha * diff;
+  return ((next % 360) + 360) % 360;
 }

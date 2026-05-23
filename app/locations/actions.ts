@@ -26,7 +26,7 @@ import type {
  *  MAX_LOCATIONS_FREE first. Set high enough that the cap is never
  *  the *thing* paddlers buy Pro for — Pro is about unlocking the
  *  second, third, fourth location, not about getting to 50. */
-const MAX_LOCATIONS = 6;
+const MAX_LOCATIONS = 15;
 /** Free-tier cap. Free users get a small handful of locations — enough
  *  to cover a "home spot + two regulars" pattern without making them
  *  feel cramped. Pro removes the cap up to MAX_LOCATIONS. */
