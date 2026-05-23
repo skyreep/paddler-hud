@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { STATION_TZ } from "@/lib/time";
 
@@ -634,23 +634,4 @@ function animateLayerOpacity(
     else if (onDone) onDone();
   };
   requestAnimationFrame(step);
-}
-start = performance.now();
-  function step(ts: number) {
-    if (!start) start = ts;
-    const elapsed = ts - start;
-    const t = Math.min(1, elapsed / durationMs);
-    try {
-      if (layer && typeof layer.setOpacity === "function") {
-        layer.setOpacity(from + (to - from) * t);
-      }
-    } catch {
-      // Layer may have been removed mid-animation — bail.
-      return;
-    }
-    if (t < 1) {
-      requestAnimationFrame(step);
-    } else {
-      onDone?.();
-    }
 }
