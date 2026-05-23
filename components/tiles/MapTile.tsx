@@ -370,7 +370,12 @@ export default function MapTile({ lat, lon, displayName }: Props) {
             aria-label={`Heading ${Math.round(headingDisplay)} degrees`}
             style={{
               position: "absolute",
-              top: 10,
+              // Sit below the Leaflet zoom controls (+/-) at top-left.
+              // Their default height is ~64px (two 30px buttons + a 1px
+              // separator + ~10px margin); 80 gives a clean breathing
+              // space without crowding the next control if one's ever
+              // added.
+              top: 80,
               left: 10,
               display: "flex",
               alignItems: "center",
