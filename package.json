@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node scripts/check-encoding.mjs && tsc --noEmit",
+    "check:encoding": "node scripts/check-encoding.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

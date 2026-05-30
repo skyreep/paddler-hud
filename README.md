@@ -24,6 +24,41 @@ Switch locations by URL query string while the location-picker UI is being built
 - `?station=charleston`
 - `?gauges=02198840,02202500,02226000` — comma-separated USGS site IDs (max 5)
 
+## Repo health: encoding guard
+
+Editing files in this folder through some tooling on Windows can occasionally
+leave a file corrupted in one of two ways: a tail of **NULL bytes** (the file
+reads as binary and `tsc` reports "Invalid character"), or a **truncated
+ending** where the last lines are lost. Both come from a write that doesn't
+truncate the file to its new length.
+
+A guard catches this before it wastes your time:
+
+```bash
+npm run check:encoding   # scan all source files for NULL bytes / leading BOM / empty files
+npm run typecheck        # runs the encoding guard first, then `tsc --noEmit`
+```
+
+`scripts/check-encoding.mjs` walks the repo (skipping `node_modules`, `.next`,
+`.git`) and exits non-zero with a precise `file: N NULL bytes (first at byte X)`
+report if anything is corrupted.
+
+### Repairing a flagged file
+
+`git checkout` and `rm` can be blocked on this mount, so repair by overwriting
+in place:
+
+```bash
+# If the working copy has NO edits you want to keep — restore from git:
+git cat-file -p HEAD:path/to/file > path/to/file
+
+# If the working copy HAS edits to keep — strip BOM + NULLs, preserve content:
+node -e "const f='path/to/file';const fs=require('fs');let b=fs.readFileSync(f);if(b[0]===0xef&&b[1]===0xbb&&b[2]===0xbf)b=b.subarray(3);fs.writeFileSync(f,Buffer.from(b.filter(x=>x!==0)));"
+```
+
+For a truncated file (lost tail rather than NULL padding), restore from git as
+above, then re-apply your edit.
+
 ## Project layout
 
 ```

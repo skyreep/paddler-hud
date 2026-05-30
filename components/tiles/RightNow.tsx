@@ -42,8 +42,9 @@ export default function RightNow({ weather, fetchedAt, airQuality, liveTideFt, a
       </div>
       <div style={{
         display: "grid",
-        // Two-column inside the tile when there's enough width; stacks below 380px.
-        gridTemplateColumns: "minmax(0, auto) minmax(0, 1fr)",
+        // grid-template-columns is defined in globals.css (.phud-now-top) so the
+        // media query there can stack this to a single column on phones — inline
+        // styles can't be overridden by media queries, so it must live in CSS.
         gap: 16, alignItems: "center", rowGap: 14,
       }} className="phud-now-top">
         <div style={{ minWidth: 0 }}>

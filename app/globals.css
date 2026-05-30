@@ -105,6 +105,20 @@ body {
   margin-left: auto;
   font-size: 11px; color: var(--text-faint);
 }
+
+/* RIGHT NOW tile top row (temp/forecast | wind+compass).
+   grid-template-columns lives here, NOT inline on the element, because a
+   media query can't override an inline style. Two columns when there's room;
+   stacks to one column on phones so the wind block never collapses into a
+   sliver (which made every token — "7", "kt", "N"… — wrap onto its own line). */
+.phud-now-top {
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+}
+@media (max-width: 540px) {
+  .phud-now-top {
+    grid-template-columns: 1fr;
+  }
+}
 .pill {
   display: inline-block;
   padding: 3px 8px;
