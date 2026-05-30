@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import LocationPicker from "./LocationPicker";
 import AccountMenu from "./auth/AccountMenu";
@@ -41,6 +41,20 @@ interface Props {
 }
 
 type ThemeMode = "light" | "dark" | "auto";
+
+// Why a refresh fired — controls the toast (return only) and the overlap
+// guard (everything except a manual tap).
+type RefreshReason = "manual" | "return" | "poll";
+
+// How old the on-screen data may be before we refresh it. Matches the
+// server's 5-minute revalidate window — a refresh sooner than this would
+// mostly hit cache anyway. Shared by the return-to-app listeners and the
+// foreground poll.
+const STALE_MS = 5 * 60 * 1000;
+// How often the foreground poll wakes to check staleness. It only refreshes
+// once STALE_MS has elapsed, so this just bounds how soon after crossing
+// 5 min the refresh actually happens.
+const POLL_CHECK_MS = 60 * 1000;
 
 export default function TopBar({
   locationName, stationKey, currentUser, locations, primaryKey, userLocations,
@@ -129,8 +143,29 @@ export default function TopBar({
   }
 
   const [isRefreshing, startRefreshTransition] = useTransition();
-  function refresh() {
+
+  // Wall-clock time the on-screen data was last fetched. Seeded at mount
+  // (the server render that produced this page) and reset after every
+  // refresh. A ref, not state — reading it must not re-render or re-bind
+  // the listeners below.
+  const lastRefreshAt = useRef<number>(Date.now());
+  // Mirror isRefreshing into a ref so the mount-once listener effect reads
+  // the latest value without a stale closure or re-subscribing each render.
+  const isRefreshingRef = useRef(false);
+  useEffect(() => { isRefreshingRef.current = isRefreshing; }, [isRefreshing]);
+  // Drives the "Updating…" toast — shown for AUTOMATIC refreshes only, so a
+  // sudden value change has an explanation. Manual refreshes already have
+  // the spinning button as their cue.
+  const [autoUpdating, setAutoUpdating] = useState(false);
+
+  const doRefresh = useCallback((reason: RefreshReason) => {
+    // Guard automatic triggers (return/poll) against overlapping an in-flight
+    // refresh; manual taps are already debounced by the button's disabled state.
+    if (reason !== "manual" && isRefreshingRef.current) return;
     startRefreshTransition(async () => {
+      // Toast only for the return case. A periodic foreground poll popping a
+      // toast every few minutes would be noise; manual taps have the spinner.
+      if (reason === "return") setAutoUpdating(true);
       // 1. Server action: invalidate Next.js's Full Route Cache + Data Cache
       //    for "/", so the next request actually re-fetches upstream APIs
       //    instead of returning the previously-cached UV/visibility/etc.
@@ -138,11 +173,69 @@ export default function TopBar({
       // 2. Client: re-fetch the page payload from the server, which now
       //    has nothing cached and will run the fetches fresh.
       router.refresh();
+      lastRefreshAt.current = Date.now();
     });
-  }
+  }, [router]);
+
+  // Hide the "Updating…" toast shortly after an automatic refresh settles
+  // (isRefreshing flips back to false when router.refresh() completes).
+  useEffect(() => {
+    if (!autoUpdating || isRefreshing) return;
+    const t = setTimeout(() => setAutoUpdating(false), 1200);
+    return () => clearTimeout(t);
+  }, [autoUpdating, isRefreshing]);
+
+  // Subscribe once to the "user came back" signals:
+  //   visibilitychange — tab switch, PWA background/resume
+  //   pageshow         — iOS Safari bfcache restore (back/forward, swipe
+  //                      resume) where visibilitychange may not fire
+  //   focus            — desktop window refocus
+  // Each just re-checks staleness; the STALE_MS gate makes spurious focus
+  // events harmless (no refresh unless the data is actually old).
+  useEffect(() => {
+    function maybeAutoRefresh() {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState !== "visible") return;
+      if (isRefreshingRef.current) return;
+      if (Date.now() - lastRefreshAt.current >= STALE_MS) doRefresh("return");
+    }
+    document.addEventListener("visibilitychange", maybeAutoRefresh);
+    window.addEventListener("pageshow", maybeAutoRefresh);
+    window.addEventListener("focus", maybeAutoRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", maybeAutoRefresh);
+      window.removeEventListener("pageshow", maybeAutoRefresh);
+      window.removeEventListener("focus", maybeAutoRefresh);
+    };
+  }, [doRefresh]);
+
+  // Foreground poll. The listeners above only fire when the user leaves and
+  // comes back; this keeps a continuously-open session current too. Wakes
+  // every POLL_CHECK_MS but only refreshes once data crosses STALE_MS, so the
+  // effective cadence is ~5 min and it self-coordinates with manual/return
+  // refreshes (both reset lastRefreshAt). Skips ticks while hidden to spare
+  // battery and upstream API calls.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState !== "visible") return;
+      if (isRefreshingRef.current) return;
+      if (Date.now() - lastRefreshAt.current >= STALE_MS) doRefresh("poll");
+    }, POLL_CHECK_MS);
+    return () => clearInterval(id);
+  }, [doRefresh]);
 
   return (
     <>
+      {/* Transient cue for AUTOMATIC refreshes (data was stale on return).
+          Manual refreshes rely on the spinning button instead. */}
+      {autoUpdating && (
+        <div role="status" aria-live="polite" style={updatingToast}>
+          <span style={updatingSpinner} />
+          Updating…
+        </div>
+      )}
+
       <header
         style={{
           position: "sticky", top: 0, zIndex: 5000,
@@ -189,7 +282,7 @@ export default function TopBar({
         </button>
 
         <button
-          onClick={refresh}
+          onClick={() => doRefresh("manual")}
           style={iconBtn}
           aria-label="Refresh"
           disabled={isRefreshing}
@@ -307,5 +400,33 @@ const iconBtn: React.CSSProperties = {
   background: "var(--bg-elev-2)", border: "1px solid var(--border-soft)",
   color: "var(--text)", display: "grid", placeItems: "center", flexShrink: 0,
   cursor: "pointer",
+};
+
+// "Updating…" toast for automatic, staleness-triggered refreshes. Fixed to
+// the bottom-center, above the iOS home indicator, at a z-index under the
+// beta banner (10000) but above page content.
+const updatingToast: React.CSSProperties = {
+  position: "fixed",
+  left: "50%",
+  bottom: "calc(20px + env(safe-area-inset-bottom))",
+  transform: "translateX(-50%)",
+  zIndex: 9000,
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "8px 14px",
+  background: "var(--bg-elev)",
+  border: "1px solid var(--border-soft)",
+  borderRadius: 999,
+  boxShadow: "0 6px 20px rgba(0,0,0,.25)",
+  color: "var(--text)",
+  fontSize: 13, fontWeight: 600,
+  // Pointer-events off so the toast never intercepts a tap on the tile
+  // beneath it during its brief on-screen life.
+  pointerEvents: "none",
+};
+const updatingSpinner: React.CSSProperties = {
+  width: 12, height: 12, borderRadius: "50%",
+  border: "2px solid var(--border)",
+  borderTopColor: "var(--accent)",
+  animation: "phud-spin 0.9s linear infinite",
 };
 
